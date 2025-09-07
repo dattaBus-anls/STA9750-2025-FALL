@@ -1,12 +1,13 @@
 project:
   type: website
   output-dir: docs
+  resources:       
+    - Resume.pdf   
 
 website:
   title: "STA 9750 Submission Material"
-  description:
-    Course Projects for STA 9750 at Baruch College
-  site-url: "https://github.com/dattaBus-anls/STA9750-2025-FALL.git"
+  description: "Course Projects for STA 9750 at Baruch College"
+  site-url: "https://dattabus-anls.github.io/STA9750-2025-FALL/"
   navbar:
     background: primary
     search: false
