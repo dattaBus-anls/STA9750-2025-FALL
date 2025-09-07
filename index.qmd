@@ -1,0 +1,67 @@
+---
+title: "STA 9750 Projects"
+execute:
+  echo: false
+  message: false
+  warning: false
+---
+
+## About me
+
+I’m **Apu Datta**, a Master’s student in Business Analytics at *Baruch College, CUNY*. I hold a **BBA in Accounting** and an **MBA in Finance** from *Independent University, Bangladesh*, both recognized as U.S. equivalent degrees.  
+
+With over a decade of experience in finance, ERP systems (**SAP**), and analytics, I have served as Assistant General Manager (Financial Planning Analyst) at **Epic Group, Bangladesh**. I also led the **SAP S/4HANA** implementation at **Deshbandhu Group** and contributed to corporate finance at **VIYELLATEX Group, Bangladesh**.
+
+## Baruch College Map
+
+```{r}
+if (!require("leaflet")) {
+  options(repos = c(CRAN = "https://cloud.r-project.org"))
+  install.packages("leaflet")
+  stopifnot(require("leaflet"))
+}
+
+# Baruch College (NYC)
+baruch_longitude <- -73.98333
+baruch_latitude  <- 40.75028
+
+leaflet() |>
+  addTiles() |>
+  setView(baruch_longitude, baruch_latitude, zoom = 17) |>
+  addPopups(baruch_longitude, baruch_latitude,
+            "I am a Master's student at <b>Baruch College</b>!")
+
+```
+
+## Independent University, Bangladesh (Dhaka)
+
+```{r}
+
+iub_longitude <- 90.4275
+iub_latitude  <- 23.8155
+
+leaflet() |>
+  addTiles() |>
+  setView(iub_longitude, iub_latitude, zoom = 16) |>
+  addPopups(iub_longitude, iub_latitude,
+            "I earned my <b>BBA</b> and <b>MBA in Finance</b> at <b>Independent University, Bangladesh</b>.")
+
+```
+
+## More About Me
+
+- **Professional Interests**: Forecasting, Financial Analytics, ERP systems (SAP), Machine Learning, Data visualization
+- **Tools**: Excel, SAP, Python, SQL, Git/GitHub, R
+- **Contact**: apu.datta@baruchmail.cuny.edu
+- **LinkedIn**: [linkedin.com/in/apu-datta-491b8b84](https://www.linkedin.com/in/apu-datta-491b8b84)  
+- **GitHub**: [github.com/dattaBus-anls](https://github.com/dattaBus-anls)
+- **Resume**: [Open my resume](Resume.pdf)
+
+```{r}
+#| include: false
+1+1
+```
+
+Last Updated: `r format(Sys.time(), "%A %b %d, %Y at %I:%M %p")`
+
+
