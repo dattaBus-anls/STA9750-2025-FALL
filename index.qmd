@@ -1,20 +1,51 @@
 ---
-title: "STA 9750 Projects"
-execute:
-  echo: false
-  message: false
-  warning: false
+title: "Apu Datta"
+image: AD.png
+about:
+  id: hero-heading
+  template: jolla
+  image-shape: round
+  image-width: 10em
+  links:
+    - icon: linkedin
+      text: LinkedIn
+      href: https://www.linkedin.com/in/apu-datta-491b8b84
+    - icon: github
+      text: GitHub
+      href: https://github.com/dattaBus-anls
+    - icon: envelope
+      text: Email
+      href: mailto:apu.datta@baruchmail.cuny.edu
 ---
 
-## About me
+::: {#hero-heading}
 
-I’m **Apu Datta**, a Master’s student in Business Analytics at *Baruch College, CUNY*. I hold a **BBA in Accounting** and an **MBA in Finance** from *Independent University, Bangladesh*, both recognized as U.S. equivalent degrees.  
+**Apu Datta** is a Master’s student in Business Analytics at *Baruch College (CUNY)*. With 10+ years across finance, ERP systems (**SAP**), and analytics, I have served as Assistant General Manager (Financial Planning Analyst) at **Epic Group**, led **SAP S/4HANA** implementation at **Deshbandhu Group**, and contributed to corporate finance at **VIYELLATEX Group**.
 
-With over a decade of experience in finance, ERP systems (**SAP**), and analytics, I have served as Assistant General Manager (Financial Planning Analyst) at **Epic Group, Bangladesh**. I also led the **SAP S/4HANA** implementation at **Deshbandhu Group** and contributed to corporate finance at **VIYELLATEX Group, Bangladesh**.
+## Education
+- **MSBA (Business Analytics)** — Baruch College, City University of New York (CUNY)  
+- **MBA (Finance)** — Independent University, Bangladesh (U.S. equivalent Master’s degree)  
+- **BBA (Accounting)** — Independent University, Bangladesh (U.S. equivalent Bachelor’s degree)  
+
+## Work Experience
+- **Mar, 2019 – Dec, 2024** — *Assistant General Manager, Financial Planning Analyst*, Epic Group, Bangladesh  
+- **Jul, 2017 – Feb, 2019** — *Project Manager: SAP S/4HANA*, Deshbandhu Group Limited, Bangladesh  
+- **Nov, 2014 – Jun, 2017** — *Executive, Corporate Finance*, VIYELLATEX Group, Bangladesh
+
+## Interests & Tools
+- **Interests:** Forecasting, Financial Analytics, ERP (SAP), ML, Visualization  
+- **Tools:** Excel, SAP, Python, Tableau, SQL, Git/GitHub
+- **Resume**: [Open my resume](Resume.pdf)
+
+:::
 
 ## Baruch College Map
 
 ```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
 if (!require("leaflet")) {
   options(repos = c(CRAN = "https://cloud.r-project.org"))
   install.packages("leaflet")
@@ -36,7 +67,9 @@ leaflet() |>
 ## Independent University, Bangladesh (Dhaka)
 
 ```{r}
-
+#| echo: false
+#| message: false
+#| warning: false
 iub_longitude <- 90.4275
 iub_latitude  <- 23.8155
 
@@ -48,14 +81,6 @@ leaflet() |>
 
 ```
 
-## More About Me
-
-- **Professional Interests**: Forecasting, Financial Analytics, ERP systems (SAP), Machine Learning, Data visualization
-- **Tools**: Excel, SAP, Python, SQL, Git/GitHub, R
-- **Contact**: apu.datta@baruchmail.cuny.edu
-- **LinkedIn**: [linkedin.com/in/apu-datta-491b8b84](https://www.linkedin.com/in/apu-datta-491b8b84)  
-- **GitHub**: [github.com/dattaBus-anls](https://github.com/dattaBus-anls)
-- **Resume**: [Open my resume](Resume.pdf)
 
 ```{r}
 #| include: false

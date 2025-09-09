@@ -1,8 +1,8 @@
 project:
   type: website
   output-dir: docs
-  resources:       
-    - Resume.pdf   
+  resources:
+    - Resume.pdf
 
 website:
   title: "STA 9750 Submission Material"
@@ -11,7 +11,22 @@ website:
   navbar:
     background: primary
     search: false
-    
+    left:
+      - text: Home
+        href: index.qmd
+    right:
+      - text: Resume
+        href: Resume.pdf
+      - icon: github
+        aria-label: GitHub
+        href: https://github.com/dattaBus-anls
+      - icon: linkedin
+        aria-label: LinkedIn
+        href: https://www.linkedin.com/in/apu-datta-491b8b84
+
+  page-footer:
+    center: "©2025 Apu Datta | This site was created as part of STA 9750 at Baruch College, Fall 2025"
+
 format:
   html:
     theme: lumen
