@@ -14,6 +14,9 @@ website:
     left:
       - text: Home
         href: index.qmd
+      - text: "MP #01"
+        href: mp01.qmd 
+        
     right:
       - text: Resume
         href: Resume.pdf
