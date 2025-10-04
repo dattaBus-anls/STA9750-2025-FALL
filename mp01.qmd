@@ -11,7 +11,7 @@ format:
     toc-depth: 2
 ---
 
-# Executive Summary
+## Executive Summary
 
 In this mini-project, I dig into Netflix’s Global and Country Top 10 data to see which stories travel, which ones stick, and where new momentum is building. I cleaned the data (turning "N/A" into real NA), converted runtimes to minutes, and then pulled together a few core signals—total hours watched, weeks in the Top 10, and how many countries a title reached in its debut week.
 
@@ -28,7 +28,7 @@ In this mini-project, I dig into Netflix’s Global and Country Top 10 data to s
 - **Metrics:** Weekly hours viewed, cumulative weeks in Top 10, debut reach (# countries in debut week).
 - **Assumptions:** Where noted (e.g., Hindi ≈ India audience), I flag caveats to avoid over-interpretation.
 
-# Acquire Data
+## Acquire Data
 
 To begin, I download the Netflix Top 10 datasets (Global and Country).  
 The following code creates a folder `data/mp01/` and downloads the files there.
@@ -56,7 +56,7 @@ if(!file.exists(COUNTRY_TOP_10_FILENAME)){
 }
 ```
 
-# Data Import and Preparation (Global)
+## Data Import and Preparation (Global)
 
 I import the Global Top 10 dataset using read_tsv() and inspect its structure with str() and glimpse(). This confirms the number of rows, column names, and data types before analysis.
 
@@ -114,7 +114,7 @@ str(GLOBAL_TOP_10)
 glimpse(GLOBAL_TOP_10)
 ```
 
-# Data Import and Preparation (Country)
+## Data Import and Preparation (Country)
 
 Now I import the per-country Top 10 dataset. I modify the `read_tsv()` call to create a new object called `COUNTRY_TOP_10` and add an argument so that any "N/A" strings are read as proper missing values (NA) right away.
 
@@ -197,7 +197,7 @@ format_titles <- function(df) {
 ```
 
 
-# Initial Data Exploration
+## Initial Data Exploration
 
 Before preparing the press releases, I perform some Exploratory Data Analysis (EDA). EDA helps with quality control, spotting outliers, and simply understanding what information is in the data. Instead of just looking at the first few rows, I will also sample random rows to get a better overview. For a cleaner presentation, I use the **DT** package, which allows me to create interactive tables in the report.
 
@@ -286,7 +286,7 @@ COUNTRY_TOP_10 |>
 ```
 
 
-# Exploratory Questions
+## Exploratory Questions
 
 ### Q1. How many countries does Netflix operate in?
 
@@ -652,7 +652,7 @@ The strongest debut was **`r if (nrow(q10_debut_reach) > 0) q10_debut_reach$prog
 
 *Interpretation:* A debut spanning **`r if (nrow(q10_debut_reach) > 0) q10_debut_reach$n_countries[1] else NA`** countries shows Netflix’s strength in orchestrating truly global launches and creating “instant hits” across markets.
 
-# Press Releases
+## Press Releases
 Netflix continues to dominate the global streaming landscape. The following press releases highlight three different dimensions of its success story: record-breaking franchises, breakthrough regional markets, and the rise of non-English global hits.
 
 
@@ -749,14 +749,13 @@ top_noneng_weeks <- if (nrow(q2_noneng) > 0) q2_noneng$cumul_weeks[1] else NA_in
 n_countries_meta <- COUNTRY_TOP_10 |> summarise(n = n_distinct(country_name))
 ```
 
-
-# Quick QA: check columns and category labels
-
 ```{r}
+#| label: qa-hidden
 #| include: false
+#| eval: false
+# Quick QA (debug only). Hidden & not executed.
 print(names(GLOBAL_TOP_10))
 print(names(COUNTRY_TOP_10))
-
 COUNTRY_TOP_10 |>
   dplyr::count(category, sort = TRUE) |>
   print(n = 50)
