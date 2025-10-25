@@ -1,0 +1,10 @@
+---
+title: "Mini-Project #03: NYC Tree Canopy Analysis"
+date: "2025-11-15"
+---
+
+_Stub page for MP03._
+
+This project will explore **geospatial analysis** using NYC Parks tree-census data.
+It focuses on mapping, spatial joins, and communicating **urban-environment insights**
+through interactive maps.

@@ -1,0 +1,120 @@
+---
+title: "Apu Datta"
+body-class: about-page
+
+about:
+  id: hero-heading
+  template: jolla
+  image: AD.png          
+  image-shape: round
+  image-width: 10em
+  links:
+    - icon: linkedin
+      text: LinkedIn
+      href: https://www.linkedin.com/in/apu-datta-491b8b84
+    - icon: github
+      text: GitHub
+      href: https://github.com/dattaBus-anls
+    - icon: envelope
+      text: Email (Personal)
+      href: "https://mail.google.com/mail/?view=cm&fs=1&to=uda.mr.iub@gmail.com"
+    - icon: envelope
+      text: Email (Baruch)
+      href: "https://mail.google.com/mail/?view=cm&fs=1&to=APU.DATTA@BARUCHMAIL.CUNY.EDU"
+
+execute:
+  echo: false
+  message: false
+  warning: false
+
+format:
+  html:
+    code-tools: false
+    smooth-scroll: true
+    html-math-method: mathjax
+    anchor-sections: true
+    toc: false
+    css: styles.css
+    standalone: true
+    embed-resources: true
+---
+
+> **Apu Datta**  
+> *MSBA Candidate, Baruch College (CUNY)*  
+> *Finance  |  ERP (SAP)  |  Analytics & Machine Learning*  
+>
+> [View Résumé](Resume.pdf){.btn .btn-primary .me-2}  
+> [Email Me](https://mail.google.com/mail/?view=cm&fs=1&to=uda.mr.iub@gmail.com){.btn .btn-outline-secondary}
+
+
+---
+
+## Education
+- **MSBA (Business Analytics)** — Baruch College, City University of New York (CUNY)  
+- **MBA (Finance)** — Independent University, Bangladesh  
+- **BBA (Accounting)** — Independent University, Bangladesh  
+
+## Experience
+- **Assistant GM, Financial Planning & Analytics** — *Epic Group* (2019 – 2024)  
+- **Project Manager (SAP S/4HANA Implementation)** — *Deshbandhu Group Ltd* (2017 – 2019)  
+- **Executive, Corporate Finance** — *VIYELLATEX Group* (2014 – 2017)  
+
+## Interests & Tools
+**Interests:** Forecasting, Financial Analytics, ERP (SAP), ML, Visualization  
+**Tools:** Excel, SAP, Python, Tableau, SQL, Git/GitHub  
+
+---
+
+## Campus Maps
+
+::: {layout-ncol="2"}
+
+### Baruch College (NYC)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 9
+#| fig-height: 6
+library(leaflet)
+
+baruch_longitude <- -73.98333
+baruch_latitude  <- 40.75028
+
+leaflet() |>
+  addTiles() |>
+  setView(baruch_longitude, baruch_latitude, zoom = 17) |>
+  addPopups(baruch_longitude, baruch_latitude,
+            "I am a Master's student at <b>Baruch College</b>!")
+```
+
+
+### Independent University, Bangladesh (Dhaka)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 9
+#| fig-height: 6
+library(leaflet)
+
+iub_longitude <- 90.4275
+iub_latitude  <- 23.8155
+
+leaflet() |>
+  addTiles() |>
+  setView(iub_longitude, iub_latitude, zoom = 16) |>
+  addPopups(
+    iub_longitude, iub_latitude,
+    "I earned my <b>BBA</b> and <b>MBA in Finance</b> at <b>Independent University, Bangladesh</b>."
+  )
+
+```
+
+:::
+  
+---
+
+<small class="text-muted">
+Last Updated: `r format(Sys.time(), "%A %b %d, %Y at %I:%M %p")`
+</small>

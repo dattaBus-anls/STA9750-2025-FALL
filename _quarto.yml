@@ -3,6 +3,7 @@ project:
   output-dir: docs
   resources:
     - Resume.pdf
+    - AD.png
 
 website:
   title: "STA 9750 Submission Material"
@@ -10,13 +11,20 @@ website:
   site-url: "https://dattabus-anls.github.io/STA9750-2025-FALL/"
   navbar:
     background: primary
+    logo: AD.png
     search: false
     left:
       - text: Home
-        href: index.qmd
+        href: about.qmd   
       - text: "MP #01"
         href: mp01.qmd 
-        
+      - text: "MP #02"
+        href: mp02.qmd
+      - text: "MP #03"
+        href: mp03.qmd
+      - text: "MP #04"
+        href: mp04.qmd
+
     right:
       - text: Resume
         href: Resume.pdf
@@ -34,6 +42,10 @@ format:
   html:
     theme: lumen
     toc: false
+    code-tools: false
+    smooth-scroll: true
+    anchor-sections: true    
+    css: styles.css
 
 editor:
   mode: source

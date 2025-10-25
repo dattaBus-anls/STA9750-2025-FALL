@@ -1,92 +1,68 @@
----
-title: "Apu Datta"
-image: AD.png
-about:
-  id: hero-heading
-  template: jolla
-  image-shape: round
-  image-width: 10em
-  links:
-    - icon: linkedin
-      text: LinkedIn
-      href: https://www.linkedin.com/in/apu-datta-491b8b84
-    - icon: github
-      text: GitHub
-      href: https://github.com/dattaBus-anls
-    - icon: envelope
-      text: Email
-      href: mailto:apu.datta@baruchmail.cuny.edu
+## 🧭 STA 9750 – Basic Software Tools for Data Anal.Fall 2025
+
+**Instructor:** Prof. Michael Weylandt  
+**Format:** Flipped-classroom + experiential learning using R, Quarto, and GitHub
+
+STA 9750 introduces graduate students to data analytics in R through a project-driven format. Instead of traditional exams, students complete a sequence of GitHub-hosted mini-projects that mirror real-world analytical workflows. Each assignment develops technical fluency, analytical reasoning, and clear data storytelling skills.
+
 ---
 
-::: {#hero-heading}
+### 📊 Mini-Projects (MP00 – MP04)
 
-**Apu Datta** is a Master’s student in Business Analytics at *Baruch College (CUNY)*. With 10+ years across finance, ERP systems (**SAP**), and analytics, I have served as Assistant General Manager (Financial Planning Analyst) at **Epic Group**, led **SAP S/4HANA** implementation at **Deshbandhu Group**, and contributed to corporate finance at **VIYELLATEX Group**.
 
-## Education
-- **MSBA (Business Analytics)** — Baruch College, City University of New York (CUNY)  
-- **MBA (Finance)** — Independent University, Bangladesh (U.S. equivalent Master’s degree)  
-- **BBA (Accounting)** — Independent University, Bangladesh (U.S. equivalent Bachelor’s degree)  
+- **MP00 – Course Setup:** Git/GitHub + Quarto site  
+- **MP01 – Netflix Top 10 Analysis:** wrangling + visuals + press release — [Open MP01](mp01.qmd)  
+- **MP02 – Housing Affordability Index:** ACS + BLS + permits; indices & policy viz — [Open MP02](mp02.qmd)  
+- **MP03 – NYC Tree Canopy:** geospatial joins & maps — [Open MP03](mp03.qmd)
+- **MP04 – Capstone (TBD):** synthesize skills into a self-directed analysis — [Open MP04](mp04.qmd)
 
-## Work Experience
-- **Mar, 2019 – Dec, 2024** — *Assistant General Manager, Financial Planning Analyst*, Epic Group, Bangladesh  
-- **Jul, 2017 – Feb, 2019** — *Project Manager: SAP S/4HANA*, Deshbandhu Group Limited, Bangladesh  
-- **Nov, 2014 – Jun, 2017** — *Executive, Corporate Finance*, VIYELLATEX Group, Bangladesh
+Each mini-project includes a GitHub-based peer review cycle focused on code clarity and rubric-based feedback.
 
-## Interests & Tools
-- **Interests:** Forecasting, Financial Analytics, ERP (SAP), ML, Visualization  
-- **Tools:** Excel, SAP, Python, Tableau, SQL, Git/GitHub
-- **Resume**: [Open my resume](Resume.pdf)
+---
 
-:::
+### 🎯 Learning Objectives
+- End-to-end analytics in R/tidyverse  
+- Reproducible Quarto reports (code + narrative + visuals)  
+- Multi-source data integration (public/government/web)  
+- Geospatial analysis and mapping  
+- Data storytelling for technical & non-technical audiences  
+- GitHub collaboration and professional peer feedback  
+- Responsible AI use and academic integrity
 
-## Baruch College Map
+---
+
+### 📚 Resources & Policies
+- *R for Data Science* (Wickham & Grolemund), *Happy Git with R*, *Veridical Data Science*  
+- Software: R, RStudio, Quarto (all free)  
+- AI tools allowed only for small coding questions; full assignment generation is prohibited.
 
 ```{r}
 #| echo: false
 #| message: false
 #| warning: false
+#| fig-width: 10
+#| fig-height: 3.8
 
-if (!require("leaflet")) {
-  options(repos = c(CRAN = "https://cloud.r-project.org"))
-  install.packages("leaflet")
-  stopifnot(require("leaflet"))
-}
+if (!require("ggplot2")) { install.packages("ggplot2", quiet=TRUE); library(ggplot2) }
+if (!require("tibble"))  { install.packages("tibble",  quiet=TRUE); library(tibble) }
 
-# Baruch College (NYC)
-baruch_longitude <- -73.98333
-baruch_latitude  <- 40.75028
+df <- tibble::tibble(
+mp = factor(c("MP00","MP01","MP02","MP03","MP04"),
+levels = rev(c("MP00","MP01","MP02","MP03","MP04"))),
+progress = c(100, 100, 10, 0, 0)
+)
 
-leaflet() |>
-  addTiles() |>
-  setView(baruch_longitude, baruch_latitude, zoom = 17) |>
-  addPopups(baruch_longitude, baruch_latitude,
-            "I am a Master's student at <b>Baruch College</b>!")
-
-```
-
-## Independent University, Bangladesh (Dhaka)
-
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-iub_longitude <- 90.4275
-iub_latitude  <- 23.8155
-
-leaflet() |>
-  addTiles() |>
-  setView(iub_longitude, iub_latitude, zoom = 16) |>
-  addPopups(iub_longitude, iub_latitude,
-            "I earned my <b>BBA</b> and <b>MBA in Finance</b> at <b>Independent University, Bangladesh</b>.")
+ggplot(df, aes(x = progress, y = mp)) +
+geom_segment(aes(x = 0, xend = progress, y = mp, yend = mp), linewidth = 6, alpha = 0.25) +
+geom_point(size = 5) +
+scale_x_continuous(limits = c(0, 100), labels = function(x) paste0(x, "%")) +
+labs(title = "Mini-Projects Progress", x = "Completion", y = NULL) +
+theme_minimal(base_size = 13) +
+theme(panel.grid.major.y = element_blank(),
+panel.grid.minor = element_blank(),
+plot.title = element_text(face="bold"))
 
 ```
 
-
-```{r}
-#| include: false
-1+1
-```
-
-Last Updated: `r format(Sys.time(), "%A %b %d, %Y at %I:%M %p")`
 
 

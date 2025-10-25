@@ -1,0 +1,9 @@
+---
+title: "Mini-Project #04: Capstone Mini-Project"
+date: "2025-12-10"
+---
+  
+  _Stub page for MP04._
+
+This capstone will synthesize all prior skquarto renderills—data acquisition, cleaning,
+visualization, modeling, and communication—into an independent analysis.

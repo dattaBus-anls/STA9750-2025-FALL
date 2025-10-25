@@ -1,0 +1,13 @@
+---
+title: "Mini-Project #02: Making Backyards Affordable for All"
+date: "2025-10-24"
+---
+
+_Working page for MP #02._
+
+This project analyzes **housing affordability and YIMBY policy trends** using:
+- U.S. Census ACS data (income, rent, population)
+- BLS QCEW employment and wage data
+- Building permit statistics  
+  
+You’ll merge these datasets, construct **rent-burden and housing-growth indices**, and prepare a **policy brief** showing how permissive zoning affects affordability.
