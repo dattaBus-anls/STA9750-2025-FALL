@@ -1,0 +1,60 @@
+/* === FINAL GAP FIX FOR ABOUT PAGE === */
+body.about-page {
+  padding-top: 0 !important;  /* Remove Quarto's default navbar spacing */
+  margin-top: 0 !important;
+}
+
+/* Remove all top space from first visible block */
+body.about-page main.content > *:first-child {
+  margin-top: -25px !important;   /* You can tweak between -15 and -30px if needed */
+}
+
+/* Also ensure the hero header section is tight */
+body.about-page #hero-heading {
+  margin-top: -35px !important;
+  padding-top: 0 !important;
+}
+
+/* Center and keep image stable */
+body.about-page #hero-heading img {
+  margin-top: 0 !important;
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+
+/* === PROFESSIONAL POLISH FOR ABOUT PAGE === */
+body.about-page {
+  padding-top: 0 !important;
+  margin-top: 0 !important;
+  background-color: #ffffff;
+}
+
+body.about-page main.content > *:first-child {
+  margin-top: -25px !important;
+}
+
+/* Hero section image */
+body.about-page #hero-heading img {
+  margin-top: 0 !important;
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+  transition: transform 0.6s ease, opacity 0.6s ease;
+}
+body.about-page #hero-heading img:hover {
+  transform: scale(1.05);
+  opacity: 0.95;
+}
+
+/* Buttons */
+.btn {
+  border-radius: 9999px;
+  padding: 0.5rem 1rem;
+}
+
+/* Cards for education/experience/tools */
+.card-title { font-weight: 700; }
+.card { border: none; }
+.card.shadow-sm { box-shadow: 0 10px 25px rgba(0,0,0,.05); }
