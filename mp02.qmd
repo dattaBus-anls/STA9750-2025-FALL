@@ -1,5 +1,6 @@
 ---
 title: "Mini-Project #02: Making Backyards Affordable for All"
+author: "Apu Datta" 
 page-layout: article
 format:
   html:

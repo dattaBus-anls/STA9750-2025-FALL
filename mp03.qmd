@@ -1,5 +1,6 @@
 ---
 title: "Mini-Project #03: NYC Tree Canopy Analysis"
+author: "Apu Datta" 
 page-layout: article
 format:
   html:

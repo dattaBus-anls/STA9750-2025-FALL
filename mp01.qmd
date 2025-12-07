@@ -1,5 +1,6 @@
 ---
 title: "Mini-Project #01: Netflix Top 10 — Global Hits"
+author: "Apu Datta"
 execute:
   warning: false
   message: false
