@@ -16,3 +16,19 @@ data/**
 /.quarto/*
 **/gganim*
 /.quarto/
+
+
+# Adding for Final Project safety
+.RData
+.RDataTmp*
+**/.RData
+**/.RDataTmp*
+
+_site/
+docs/_site/
+.quarto_cache/
+Thumbs.db
+
+
+# Final project DuckDB is huge (do not commit)
+Nightlife_Analytics/quarto/data/*.duckdb
