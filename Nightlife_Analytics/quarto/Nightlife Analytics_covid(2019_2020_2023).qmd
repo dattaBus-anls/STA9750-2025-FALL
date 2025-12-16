@@ -1,0 +1,2585 @@
+---
+title: "Nightlife_Analytics"
+author: "Apu Datta" 
+format:
+  html: 
+    toc: true            
+    toc-location: right  
+    toc-title: "See in this page" 
+    toc-depth: 5          
+    code-fold: true
+    output-file: "Nightlife_Analytics_covid.html"
+execute:
+  warning: false
+  message: false
+output-dir: "docs"
+
+---
+
+![](nyc_night_street.jpg){width="900" fig-align="center"}
+*New York City nightlife transportation: Time_Square*
+
+### Introduction
+
+New York City’s nightlife supports jobs, transportation, and the sense of safety created by active late night streets. This project combines TLC night time trips (8 PM–4 AM) with Yelp nightlife venues to examine how COVID-19 reshaped night mobility. The **overarching question** is: **How does nightlife activity - bars, entertainment, and rideshares drive urban economies and affect city safety?** To address this, I focus on the following **specific question**: **Has COVID changed the way the city moves at night (8 PM – 4 AM)?** Using 2019–2023 Yellow Taxi and FHV (Uber/Lyft) trips linked to nightlife zones, the analysis tracks spatial and temporal shifts across pre-COVID, during-COVID, and post-COVID periods. Through cleaning, visualization, and statistical inference, the project reveals structural changes in NYC’s nightlife and night-time movement ecosystem.
+
+---
+
+### Executive Summary
+
+COVID reshaped NYC night time mobility. Before COVID, night travel peaked around midnight but collapsed in 2020. Post COVID activity shifted earlier in the evening while late night travel remained weaker. Nightlife intensive zones saw the largest declines and recoveries, and rideshare services strengthened their dominance as Yellow Taxi activity lagged. Statistical evidence shows these changes are large, significant, and persistent, indicating a lasting shift in the timing and geography of night time travel in New York City.
+
+---
+
+::: callout-note
+**Key takeaway:** COVID caused a sharp collapse in NYC night travel and the recovery is incomplete post-COVID trips shift earlier (8–11 PM) while late-night (12–4 AM) remains persistently weaker than 2019.
+:::
+    
+---
+
+### Dataset and Methods: TLC Trips + Yelp Nightlife
+
+This project combines NYC TLC night time taxi and rideshare trips from 2019–2023 with Yelp nightlife venue data. Night trips were filtered to the 8 PM–4 AM window, while nightlife venues were geocoded and assigned to taxi zones. These sources were merged into a zone level panel dataset linking nightlife intensity to night time mobility across NYC and COVID periods.
+
+---
+
+### Reproducibility Note
+
+This project is reproducible with access to NYC TLC trip data. Yellow Taxi and FHV parquet files from 2019 to 2023 should be placed in the dataset_optional/ folder and are processed once into a local DuckDB database (data/night_trips.duckdb) for reuse. Yelp nightlife data are loaded from a cached CSV file by default, and the Yelp API is used only when refetching is enabled.
+
+---
+
+::: callout-warning
+**Interpret carefully:** Yelp nightlife counts are an approximation (API limits + snapshot), so results reflect *relative nightlife intensity* rather than a full census.
+:::
+
+---
+
+### Project Initialization and Environment Setup
+
+This section sets up a portable, reproducible project environment by defining folders, loading required R packages, and configuring file paths to ensure consistent execution across systems.
+
+```{r}
+#| label: project_setup
+#| code-fold: true
+#| message: false
+#| warning: false
+
+library(rprojroot)
+
+# Project root (portable, no setwd)
+# project_root <- normalizePath(getwd(), winslash = "/", mustWork = FALSE)
+# Robust project root detection (works from any subfolder)
+project_root <- normalizePath(
+  rprojroot::find_root(rprojroot::has_file("_quarto.yml")),
+  winslash = "/"
+)
+
+# cat("✔ Project root:", project_root, "\n")
+
+# Key directories (DEFINE FIRST)
+# base_dir <- file.path(project_root, "data")
+base_dir <- file.path(project_root, "Nightlife_Analytics", "quarto", "data")
+
+tlc_dir  <- file.path(project_root, "dataset_optional")  # TLC parquet files live here
+yelp_dir <- file.path(base_dir, "yelp")
+
+# Create folders (NOW safe to create)
+dir.create(base_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(base_dir, "tlc"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(base_dir, "yelp"), recursive = TRUE, showWarnings = FALSE)
+dir.create("scripts", showWarnings = FALSE)
+
+# Packages
+library(tidyverse)
+library(lubridate)
+library(arrow)
+library(duckdb)
+library(sf)
+library(httr)
+library(jsonlite)
+library(scales)
+library(kableExtra)
+
+options(scipen = 999, stringsAsFactors = FALSE)
+
+# Optional debug prints (safe to keep)
+# cat("✔ TLC dir:", normalizePath(tlc_dir, winslash = "/", mustWork = FALSE), "\n")
+# cat("✔ Yelp dir:", normalizePath(yelp_dir, winslash = "/", mustWork = FALSE), "\n")
+
+# Folder listing
+folders <- list.files(base_dir, recursive = TRUE)
+
+timestamp <- Sys.time()
+cat("✔ Project setup completed successfully.\n")
+
+```
+---
+
+### Loading Night-Time TLC Trips 
+
+TLC Yellow Taxi and FHVHV parquet files from 2019 to 2023 are processed in DuckDB and filtered to night hours (8 PM to 4 AM). Trips are stored in a standardized table (tlc_night) with timestamps, pickup zones, distances, and fares. For analysis, 2019, 2020, and 2023 represent pre COVID, during COVID, and post COVID periods, while 2021 and 2022 are excluded as transitional years.
+
+```{r}
+#| label: tlc_loader
+#| results: 'hide'
+#| code-fold: true
+#| message: false
+#| warning: false
+#| cache: false
+#| eval: true
+
+library(DBI)
+library(duckdb)
+library(dplyr)
+library(lubridate)
+library(glue)
+
+# Connect to a persistent DuckDB database on disk
+
+duckdb_path <- file.path(base_dir, "night_trips.duckdb")
+con <- dbConnect(duckdb::duckdb(), dbdir = duckdb_path)
+
+# PRAGMA settings
+DBI::dbExecute(con, "PRAGMA disable_progress_bar;")           # Turn off progress bar
+# DBI::dbExecute(con, "PRAGMA max_temp_directory_size='20GB';") # Increase temp storage
+DBI::dbExecute(con, "PRAGMA max_temp_directory_size='10GB';")
+
+# cat("DuckDB database:", duckdb_path, "\n")
+
+
+# Helper: list of all months and insert function
+
+# All months from 2019-01 to 2023-12
+months_all <- format(
+  seq.Date(from = as.Date("2019-01-01"),
+           to   = as.Date("2023-12-01"),
+           by   = "month"),
+  "%Y-%m"
+)
+
+# Insert one month for one provider directly into tlc_night
+insert_tlc_night_month <- function(provider, ym, con) {
+
+  # Local file path under dataset_optional/
+  local_path <- file.path(
+    tlc_dir,
+    glue("{provider}_tripdata_{ym}.parquet")
+  )
+  local_path <- normalizePath(local_path, winslash = "/", mustWork = FALSE)
+
+  if (!file.exists(local_path)) {
+    stop("❌ TLC parquet file not found locally: ", local_path,
+         "\nPlease make sure this file exists in dataset_optional.")
+  }
+
+  message("\n--- Processing ", provider, " ", ym, " ---")
+  message("Local file: ", local_path)
+
+  # Choose the correct column names based on provider schema
+  pickup_col <- dplyr::case_when(
+    provider == "yellow" ~ "tpep_pickup_datetime",
+    provider == "fhvhv"  ~ "pickup_datetime",
+    TRUE                 ~ "pickup_datetime"
+  )
+
+  dropoff_col <- dplyr::case_when(
+    provider == "yellow" ~ "tpep_dropoff_datetime",
+    provider == "fhvhv"  ~ "dropoff_datetime",
+    TRUE                 ~ "dropoff_datetime"
+  )
+
+  distance_col <- dplyr::case_when(
+    provider == "yellow" ~ "trip_distance",
+    provider == "fhvhv"  ~ "trip_miles",
+    TRUE                 ~ "trip_distance"
+  )
+
+  total_col <- dplyr::case_when(
+    provider == "yellow" ~ "total_amount",
+    provider == "fhvhv"  ~ "base_passenger_fare",
+    TRUE                 ~ "total_amount"
+  )
+
+  sql <- glue("
+    INSERT INTO tlc_night
+    SELECT
+      '{provider}' AS provider,
+      '{ym}'       AS ym,
+      {pickup_col}  AS pickup_time,
+      {dropoff_col} AS dropoff_time,
+      PULocationID,
+      DOLocationID,
+      {distance_col} AS distance_miles,
+      {total_col}    AS total_fare
+    FROM read_parquet('{local_path}')
+    WHERE
+      (
+        EXTRACT(hour FROM {pickup_col}) BETWEEN 20 AND 23
+        OR
+        EXTRACT(hour FROM {pickup_col}) BETWEEN 0 AND 4
+      );
+  ")
+
+  DBI::dbExecute(con, sql)
+  message("   ✅ Inserted night trips for ", provider, " ", ym, " ")
+}
+
+# Build tlc_night ONCE from all local TLC parquet files
+
+if (!DBI::dbExistsTable(con, "tlc_night")) {
+
+  cat("[1] 0\n")
+  cat("⏳ Building tlc_night from local TLC parquet files in:\n   ", tlc_dir, "\n\n")
+
+  # Empty table definition
+  DBI::dbExecute(
+    con,
+    "
+    CREATE TABLE tlc_night (
+      provider TEXT,
+      ym TEXT,
+      pickup_time TIMESTAMP,
+      dropoff_time TIMESTAMP,
+      PULocationID INTEGER,
+      DOLocationID INTEGER,
+      distance_miles DOUBLE,
+      total_fare DOUBLE
+    );
+    "
+  )
+
+  # yellow: 2019-01 to 2023-12
+  # fhvhv: 2019-02 to 2023-12 (no 2019-01 file)
+  plan <- dplyr::bind_rows(
+    tibble::tibble(
+      provider = "yellow",
+      ym       = months_all
+    ),
+    tibble::tibble(
+      provider = "fhvhv",
+      ym       = months_all[months_all >= "2019-02"]
+    )
+  )
+
+  for (i in seq_len(nrow(plan))) {
+    insert_tlc_night_month(
+      provider = plan$provider[i],
+      ym       = plan$ym[i],
+      con      = con
+    )
+  }
+
+} else {
+
+  cat("✔ Using existing tlc_night table in DuckDB; not re-reading parquet files.\n")
+}
+
+# Use tlc_night as our main table in R
+
+n_rows <- dbGetQuery(con, "SELECT COUNT(*) AS n FROM tlc_night")$n
+# cat("✔ tlc_night table ready in DuckDB (rows:", n_rows, ")\n")
+
+# lazy table (doesn't pull all rows into R)
+night_trips_raw <- dplyr::tbl(con, "tlc_night")
+
+# Small preview: a few rows per provider
+
+# 5 sample rows for YELLOW trips
+yellow_preview <- DBI::dbGetQuery(
+  con,
+  "
+  SELECT *
+  FROM tlc_night
+  WHERE provider = 'yellow'
+  ORDER BY ym, pickup_time
+  LIMIT 5;
+  "
+)
+
+# 5 sample rows for FHVHV trips
+fhvhv_preview <- DBI::dbGetQuery(
+  con,
+  "
+  SELECT *
+  FROM tlc_night
+  WHERE provider = 'fhvhv'
+  ORDER BY ym, pickup_time
+  LIMIT 5;
+  "
+)
+
+# Nice HTML table for Yellow
+knitr::kable(
+  yellow_preview,
+  format  = "html",
+  caption = "Sample Night Trips – Yellow (5 rows)"
+)
+
+# Nice HTML table for fhvhv
+knitr::kable(
+  fhvhv_preview,
+  format  = "html",
+  caption = "Sample Night Trips – FHVHV (5 rows)"
+)
+
+```
+
+---
+
+### Data Validation 
+
+To verify coverage after loading and filtering, I summarize the total number of night time trips by calendar year stored in the DuckDB table.
+
+```{r}
+library(knitr)
+library(kableExtra)
+library(scales)
+
+DBI::dbGetQuery(
+  con,
+  "
+  SELECT
+    EXTRACT(year FROM pickup_time) AS year,
+    COUNT(*) AS n_trips
+  FROM tlc_night
+  GROUP BY year
+  ORDER BY year;
+  "
+) %>%
+  
+  dplyr::mutate(
+    `Night-time trips (8 PM–4 AM)` = scales::comma(n_trips)
+  ) %>%
+  dplyr::select(
+    Year = year,
+    `Night-time trips (8 PM–4 AM)`
+  ) %>%
+  knitr::kable(
+    format  = "html",
+    caption = "Total Night-Time TLC Trips by Year",
+    align   = c("c", "r")
+  ) %>%
+  kableExtra::kable_styling(
+    full_width        = FALSE,
+    bootstrap_options = c("striped", "hover", "condensed"),
+    position          = "center"
+  ) %>%
+  kableExtra::row_spec(0, bold = TRUE)
+
+```
+
+---
+
+#### TLC Data Load Validation
+
+As a final sanity check, I confirm that the consolidated night time trips table was successfully created in DuckDB.
+
+```{r}
+#| echo: true
+#| results: 'hide'
+#| message: false
+#| warning: false
+DBI::dbExistsTable(con, "tlc_night")
+```
+
+---
+
+#### COVID Period Filtering (One time Setup)
+
+The analysis restricts the DuckDB table to three benchmark years: 2019 as pre COVID, 2020 as during COVID, and 2023 as post COVID. The years 2021 and 2022 are excluded as transitional recovery periods rather than stable behavioral regimes. This filtering is performed once for analysis, and the original TLC parquet files remain unchanged.
+
+```{r}
+#| label: restrict_years_2019_2020_2023
+#| message: true
+#| warning: false
+#| eval: false   # set TRUE once to run, then back to FALSE
+
+library(DBI)
+
+cat("Keeping ONLY years 2019, 2020, 2023 in tlc_night (parquet files stay safe)...\n")
+
+DBI::dbExecute(
+  con,
+  "
+  DELETE FROM tlc_night
+  WHERE EXTRACT(year FROM pickup_time) NOT IN (2019, 2020, 2023);
+  "
+)
+
+cat("Checking remaining years in tlc_night...\n")
+
+remaining_years <- DBI::dbGetQuery(
+  con,
+  "
+  SELECT
+    EXTRACT(year FROM pickup_time) AS year,
+    COUNT(*) AS n_trips
+  FROM tlc_night
+  GROUP BY year
+  ORDER BY year;
+  "
+)
+
+print(remaining_years)
+cat("✅ Done. tlc_night now has only 2019, 2020, 2023.\n")
+
+```
+
+---
+
+### Fetching Yelp Nightlife Data via Yelp API
+
+Nightlife venues were collected using the Yelp Fusion API across selected NYC neighborhoods and nightlife categories. Due to API pagination limits, the data represent a snapshot rather than a full census. The resulting dataset contains approximately 2,087 unique venues with usable geographic coordinates and is cached locally to ensure reproducibility without repeated API calls.
+
+```{r}
+#| label: yelp_api_loader
+#| code-fold: true
+#| message: false
+#| warning: true
+#| results: "hide"
+
+library(httr2)
+library(dplyr)
+library(purrr)
+library(readr)
+library(tidyr)
+
+# Make sure Yelp folder exists
+dir.create(yelp_dir, recursive = TRUE, showWarnings = FALSE)
+
+# Helper: fetch nightlife venues from Yelp using neighborhood strategy
+#  - 10 NYC nightlife neighborhoods
+#  - 5 categories
+#  - 2 pages per (hood, category) (offset = 0 and 50)
+
+fetch_yelp_venues <- function(
+  api_key,
+  save_path = file.path(yelp_dir, "nightlife_nyc_neighborhoods.csv"),
+  refetch   = FALSE
+) {
+  
+# ✅ 1) If cache exists and refetch = FALSE, use it (NO API key needed)
+if (file.exists(save_path) && !refetch) {
+  message("✔ Using existing Yelp nightlife file: ", save_path)
+  cached <- readr::read_csv(save_path, show_col_types = FALSE)
+  return(cached)
+}
+
+# ✅ 2) If cache missing and refetch = FALSE, stop with clear instruction
+if (!file.exists(save_path) && !refetch) {
+  stop(
+    "❌ Yelp cached CSV not found: ", save_path, "\n",
+    "Fix: Put nightlife_nyc_neighborhoods.csv in data/yelp/ OR set refetch = TRUE (needs API key + internet)."
+  )
+}
+
+# ✅ 3) Only require API key when refetch = TRUE
+if (identical(api_key, "")) {
+  stop("❌ Missing Yelp API key. Set YELP_API_KEY in your .Renviron (refetch = TRUE).")
+}
+
+  base_url <- "https://api.yelp.com/v3/businesses/search"
+  all_venues <- dplyr::tibble()
+
+  # 10 key NYC neighborhoods for nightlife coverage
+  neighborhoods <- c(
+    "East Village, NY", "West Village, NY", "Lower East Side, NY",
+    "Williamsburg, Brooklyn", "Midtown Manhattan, NY", "Hell's Kitchen, NY",
+    "Astoria, Queens", "Park Slope, Brooklyn", "SoHo, NY", "Bushwick, Brooklyn"
+  )
+
+  # 5 main nightlife categories
+  categories <- c("bars", "lounges", "danceclubs", "musicvenues", "cocktailbars")
+
+  # Two pages per search: offset 0 and 50 → up to 100 venues per hood/category
+  offsets <- c(0, 50)
+
+  message("⏳ Fetching Yelp nightlife venues by neighborhood + category...")
+
+  for (hood in neighborhoods) {
+    for (cat in categories) {
+      for (off in offsets) {
+
+        message("  → ", hood, " | ", cat, " | offset = ", off)
+
+        # Safe request using httr2
+        resp <- tryCatch(
+          {
+            request(base_url) |>
+              req_headers(Authorization = paste("Bearer", api_key)) |>
+              req_url_query(
+                location   = hood,
+                categories = cat,
+                limit      = 50,
+                offset     = off
+              ) |>
+              req_timeout(30) |>
+              req_perform()
+          },
+          error = function(e) {
+            message("    ⚠️ Error at ", hood, " - ", cat,
+                    " (offset ", off, "): ", conditionMessage(e))
+            return(NULL)
+          }
+        )
+
+        # If request failed, move to the next combination
+        if (is.null(resp)) next
+
+        # Stop paging if Yelp returns non-200 status (e.g. 400)
+        if (resp_status(resp) != 200) {
+          message("    ⚠️ Yelp status ", resp_status(resp),
+                  " → stopping further pages for this hood/category.")
+          break
+        }
+
+        json <- resp_body_json(resp, simplifyVector = FALSE)
+        businesses <- json$businesses
+
+        # If no more businesses → stop paging for this hood/category
+        if (length(businesses) == 0) {
+          message("    ℹ️ No more businesses at this offset.")
+          break
+        }
+
+        # Parse businesses into a tibble
+        cleaned <- purrr::map_dfr(businesses, function(b) {
+          tibble::tibble(
+            id           = b$id,
+            name         = b$name,
+            neighborhood = hood,
+            yelp_category= cat,
+            rating       = b$rating,
+            review_count = b$review_count,
+            price        = ifelse(is.null(b$price), NA, b$price),
+            categories   = paste(
+              purrr::map_chr(b$categories, "title"),
+              collapse = ", "
+            ),
+            latitude     = b$coordinates$latitude,
+            longitude    = b$coordinates$longitude,
+            city         = b$location$city,
+            state        = b$location$state,
+            zip_code     = b$location$zip_code,
+            url          = b$url,
+            is_closed    = b$is_closed
+          )
+        })
+
+        all_venues <- dplyr::bind_rows(all_venues, cleaned)
+
+        # Be nice to the API
+        Sys.sleep(0.3)
+      }
+    }
+  }
+
+  # Deduplicate by Yelp business id
+  final <- all_venues %>%
+    dplyr::distinct(id, .keep_all = TRUE)
+
+  readr::write_csv(final, save_path)
+  message("✅ Saved Yelp nightlife snapshot to: ", save_path)
+  final
+}
+
+# Use the function with your API key from .Renviron
+
+yelp_df <- suppressMessages(
+  fetch_yelp_venues(
+    api_key   = Sys.getenv("YELP_API_KEY"),
+    save_path = file.path(yelp_dir, "nightlife_nyc_neighborhoods.csv"),
+    refetch   = FALSE
+  )
+)
+
+# Clean up for Quarto (avoid LaTeX issues with "$")
+yelp_preview <- yelp_df %>%
+  mutate(
+    price = gsub("\\$", "$ ", price)
+  ) %>%
+  select(
+    name,
+    neighborhood,
+    yelp_category,
+    rating,
+    review_count,
+    price,
+    categories,
+    latitude,
+    longitude,
+    city,
+    state
+  ) %>%
+  head(5)
+
+knitr::kable(
+  yelp_preview,
+  caption = "Preview of Yelp Nightlife Venues by Neighborhood (Sample)"
+)
+
+```
+
+#### COVID Period Classification
+
+A helper function maps each year month identifier to its corresponding COVID period pre, during, or post COVID to ensure consistent labeling throughout the analysis.
+
+```{r}
+covid_period_from_ym <- function(ym) {
+  year <- as.integer(substr(ym, 1, 4))
+
+  dplyr::case_when(
+    year == 2019 ~ "pre_covid",
+    year == 2020 ~ "during_covid",
+    year == 2023 ~ "post_covid",
+    TRUE         ~ NA_character_
+  )
+}
+
+```
+
+---
+
+#### Night-Time TLC Trip Summary 
+
+**Full Load: 2019–2023; Analysis Focus: 2019, 2020, 2023**
+
+This section provides a high level snapshot of the full TLC night trip table loaded into DuckDB. The main period analysis later focuses on 2019 (pre), 2020 (during), and 2023 (post).
+
+**Monthly Trends (By Provider)**
+
+Night time travel in NYC is dominated by FHVs, recording far more monthly trips than Yellow taxis. FHVs also have longer average trip distances, while Yellow taxis maintain higher average fares.
+
+**Hourly Night-Time Activity**
+
+Night travel peaks between 12 AM and 2 AM, with FHVs providing most trips. Yellow taxis remain active at lower volumes, and trips for both providers decline sharply after 3 AM.
+
+```{r}
+#| label: night_trips_full_eda_tables
+#| echo: false
+#| message: false
+#| warning: false
+
+library(dplyr)
+library(scales)
+library(knitr)
+library(kableExtra)
+
+# 1) Trips by year-month and provider
+night_by_month <- DBI::dbGetQuery(
+  con,
+  "
+  SELECT
+    ym,
+    provider,
+    COUNT(*)               AS n_trips,
+    AVG(distance_miles)    AS avg_distance_miles,
+    AVG(total_fare)        AS avg_total_fare
+  FROM tlc_night
+  GROUP BY ym, provider
+  ORDER BY ym, provider
+  "
+)
+
+# 2) Trips by hour of night and provider
+night_by_hour <- DBI::dbGetQuery(
+  con,
+  "
+  SELECT
+    CAST(strftime('%H', pickup_time) AS INTEGER) AS pickup_hour,
+    provider,
+    COUNT(*)               AS n_trips,
+    AVG(distance_miles)    AS avg_distance_miles,
+    AVG(total_fare)        AS avg_total_fare
+  FROM tlc_night
+  GROUP BY pickup_hour, provider
+  ORDER BY pickup_hour, provider
+  "
+)
+
+# 3) Trips by pickup zone and provider
+night_by_zone <- DBI::dbGetQuery(
+  con,
+  "
+  SELECT
+    PULocationID,
+    provider,
+    COUNT(*)               AS n_trips,
+    AVG(distance_miles)    AS avg_distance_miles,
+    AVG(total_fare)        AS avg_total_fare
+  FROM tlc_night
+  GROUP BY PULocationID, provider
+  ORDER BY n_trips DESC
+  "
+)
+
+# Nice preview: by month
+night_by_month %>%
+  mutate(
+    n_trips = comma(n_trips),
+    avg_distance_miles = round(avg_distance_miles, 2),
+    avg_total_fare = round(avg_total_fare, 2)
+  ) %>%
+  head(5) %>%
+  kable("html", caption = "Night trips by month and provider (first 5 rows)") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed"))
+
+# Nice preview: by hour (HIDE output, keep data for later)
+night_by_hour_clean <- night_by_hour %>%
+  mutate(
+    n_trips = comma(n_trips),
+    avg_distance_miles = round(avg_distance_miles, 2),
+    avg_total_fare = round(avg_total_fare, 2)
+  )
+
+invisible(night_by_hour_clean)
+
+# Nice preview: by zone (HIDE output, keep data for later)
+night_by_zone_clean <- night_by_zone %>%
+  mutate(
+    n_trips = comma(n_trips),
+    avg_distance_miles = round(avg_distance_miles, 2),
+    avg_total_fare = round(avg_total_fare, 2)
+  )
+
+invisible(night_by_zone_clean)
+
+```
+
+---
+
+#### Data Quality Overview by COVID Period
+
+The TLC night trip dataset shows excellent data completeness across all COVID periods examined. Key fields pickup location, trip distance, and fare amount have **0% missing values** for all night time trips, This indicates high data reliability and minimizes concerns about missing data bias in the analysis.
+
+```{r}
+#| label: qc_overview
+#| message: false
+#| warning: false
+#| code-fold: true
+
+# Data quality by COVID period, computed fully in DuckDB (no big collect)
+
+qc_sql <- "
+WITH base AS (
+  SELECT
+    ym,
+    CASE
+      WHEN CAST(substr(ym, 1, 4) AS INTEGER) = 2019 THEN 'pre_covid'
+      WHEN CAST(substr(ym, 1, 4) AS INTEGER) = 2020 THEN 'during_covid'
+      WHEN CAST(substr(ym, 1, 4) AS INTEGER) = 2023 THEN 'post_covid'
+      ELSE NULL
+    END AS period,
+    PULocationID,
+    distance_miles,
+    total_fare
+  FROM tlc_night
+  WHERE CAST(substr(ym, 1, 4) AS INTEGER) IN (2019, 2020, 2023)
+)
+SELECT
+  period,
+  COUNT(*) AS n_trips_sample,
+  100.0 * SUM(CASE WHEN PULocationID   IS NULL THEN 1 ELSE 0 END) / COUNT(*) AS pct_na_pu_location,
+  100.0 * SUM(CASE WHEN distance_miles IS NULL THEN 1 ELSE 0 END) / COUNT(*) AS pct_na_distance,
+  100.0 * SUM(CASE WHEN total_fare     IS NULL THEN 1 ELSE 0 END) / COUNT(*) AS pct_na_total_fare
+FROM base
+GROUP BY period
+ORDER BY period;
+"
+
+data_quality_period <- DBI::dbGetQuery(con, qc_sql)
+
+knitr::kable(
+  data_quality_period,
+  format = "html",
+  caption = "Night-Time TLC Data Quality by COVID Period (Full Data, DuckDB)",
+  digits = 2
+)
+
+```
+
+---
+
+#### Linking TLC Night Trips with Yelp Nightlife Data
+
+TLC night trips are linked to Yelp nightlife data at the taxi zone level, aggregating trips by zone, month, COVID period, and provider to form a zone level panel for analysis.
+
+```{r}
+#| label: link_tlc_yelp_zones
+#| eval: true
+#| message: false
+#| warning: false
+#| code-fold: true
+
+library(sf)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(knitr)
+
+# TLC taxi zones geometry
+
+# I define where the TLC taxi-zone zip should live and make sure the folder exists
+taxi_zip <- file.path(base_dir, "tlc_zones.zip")
+taxi_dir <- file.path(base_dir, "tlc_zones")
+
+invisible({
+dir.create(taxi_dir, showWarnings = FALSE)
+
+# I download the official TLC taxi-zone shapefile once and reuse it later
+if (!file.exists(taxi_zip)) {
+  cat("\n[download] TLC taxi zone shapefile\n")
+  download.file(
+    "https://d37ci6vzurychx.cloudfront.net/misc/taxi_zones.zip",
+    taxi_zip,
+    mode = "wb"
+  )
+  unzip(taxi_zip, exdir = taxi_dir)
+} else {
+  # cat("\n[skip] Using existing TLC taxi zone zip\n")
+}
+})
+
+# I read the taxi zones as sf polygons and keep only the fields I need
+zones_sf <- st_read(
+  dsn   = taxi_dir,
+  layer = "taxi_zones",
+  quiet = TRUE
+) %>%
+  st_transform(4326) %>%
+  select(LocationID, borough = borough, zone = zone) %>%
+  filter(borough != "EWR")   # drop Newark Airport
+
+# cat("\nSample of TLC taxi zones:\n")
+
+# knitr::kable(
+  # head(zones_sf, 6),
+  # format = "html",
+  # caption = "Sample of TLC Taxi Zones"
+# )
+
+# Yelp nightlife venues as sf points
+
+# I convert my Yelp nightlife dataframe to sf points using longitude/latitude
+# (columns from yelp_api_loader: latitude, longitude, categories, etc.)
+
+yelp_sf <- yelp_df %>%
+  filter(!is.na(latitude), !is.na(longitude)) %>%
+  st_as_sf(
+    coords = c("longitude", "latitude"),
+    crs    = 4326,
+    remove = FALSE
+  )
+
+if (interactive()) cat("\nSample of Yelp nightlife venues (sf points):\n")
+
+# Clean preview table: no geometry, no raw "$$"
+yelp_sf_preview <- yelp_sf %>%
+  sf::st_drop_geometry() %>%
+  mutate(
+    # Replace "$" with "USD " so Quarto does not think "$$" is math
+    price = gsub("\\$", "$ ", price)
+  ) %>%
+  select(
+    name,
+    rating,
+    review_count,
+    price,
+    categories,    # column created in yelp_api_loader
+    city,
+    state,
+    zip_code
+  ) %>%
+  head(6)
+
+# knitr::kable(
+# yelp_sf_preview,
+  # caption = "Sample of Yelp Nightlife Venues (sf points)"
+# )
+
+# Spatial join: assign each Yelp venue to a taxi zone
+
+yelp_zoned <- st_join(yelp_sf, zones_sf, join = st_within)
+
+if (interactive()) cat("\nYelp venues with assigned taxi zones (if any):\n")
+
+# Clean preview: drop geometry, fix price, keep only key columns
+yelp_zoned_preview <- yelp_zoned %>%
+  sf::st_drop_geometry() %>%
+  mutate(
+    price = gsub("\\$", "$ ", price)
+  ) %>%
+  select(
+    name,
+    rating,
+    review_count,
+    price,
+    borough,
+    zone
+  ) %>%
+  head(6)
+
+# knitr::kable(
+  # yelp_zoned_preview,
+  # caption = "Yelp Venues with Assigned Taxi Zones"
+# )
+
+# For aggregation, I drop the geometry and keep only attributes
+yelp_zoned_df <- yelp_zoned %>%
+  sf::st_drop_geometry()
+
+# Nightlife intensity per taxi zone + nightlife zone definition
+
+nightlife_by_zone <- yelp_zoned_df %>%
+  group_by(LocationID) %>%  
+  
+  summarize(
+    n_nightlife = n(),
+    avg_rating  = mean(rating, na.rm = TRUE),
+    .groups     = "drop"
+  ) %>%
+  mutate(
+    # My definition: all taxi zones with more than 3 nightlife venues
+    is_nightlife_zone = n_nightlife > 3,
+    nightlife_zone = if_else(
+      is_nightlife_zone,
+      "Nightlife zone (≥4 venues)",
+      "Non-nightlife zone (≤3 venues)"
+    )
+  )
+
+if (interactive()) cat("\nNightlife venues per taxi zone:\n")
+
+knitr::kable(
+  head(nightlife_by_zone, 6),
+  format = "html",
+  caption = "Nightlife Venues per Taxi Zone (with Nightlife-Zone Flag)"
+)
+
+# Aggregate TLC night trips (FULL data) to zone-month-period-provider
+# using DuckDB SQL (avoids difftime() translation issues)
+
+# Make sure the DuckDB connection from tlc_loader exists
+if (!exists("con")) {
+  stop("DuckDB connection `con` not found. Run tlc_loader chunk first.")
+}
+
+trips_sql <- "
+  SELECT
+    PULocationID AS LocationID,
+    ym,
+    CASE
+  WHEN CAST(substr(ym, 1, 4) AS INTEGER) = 2019 THEN 'pre_covid'
+  WHEN CAST(substr(ym, 1, 4) AS INTEGER) = 2020 THEN 'during_covid'
+  WHEN CAST(substr(ym, 1, 4) AS INTEGER) = 2023 THEN 'post_covid'
+  ELSE NULL
+  END AS period,
+    provider,
+    COUNT(*)                  AS n_trips,
+    AVG(distance_miles)       AS avg_distance,
+    AVG(total_fare)           AS avg_fare
+  FROM tlc_night
+  WHERE 
+    PULocationID IS NOT NULL
+    AND distance_miles IS NOT NULL AND distance_miles > 0
+    AND total_fare    IS NOT NULL AND total_fare    > 0
+    AND date_diff('minute', pickup_time, dropoff_time) BETWEEN 1 AND 180
+  GROUP BY
+    PULocationID, ym, period, provider
+"
+
+trips_by_zone_period <- DBI::dbGetQuery(con, trips_sql)
+
+# knitr::kable(
+  # head(trips_by_zone_period, 6),
+  # format = "html",
+  # caption = "Night Trips per Zone, Month, Period, Provider (Full Data, DuckDB SQL)"
+# )
+
+# Build the zone-level panel: TLC trips + nightlife intensity
+
+zone_panel <- trips_by_zone_period %>%
+  left_join(nightlife_by_zone, by = "LocationID") %>%
+  mutate(
+    n_nightlife = replace_na(n_nightlife, 0L),
+    nightlife_bin = case_when(
+      n_nightlife == 0      ~ "No nightlife venues",
+      n_nightlife <= 5      ~ "1–5 venues",
+      n_nightlife <= 15     ~ "6–15 venues",
+      n_nightlife > 15      ~ "16+ venues",
+      TRUE                  ~ NA_character_
+    ),
+    # Re-apply my nightlife-zone definition after replacing NAs
+    is_nightlife_zone = n_nightlife > 3,
+    nightlife_zone = if_else(
+      is_nightlife_zone,
+      "Nightlife zone (≥4 venues)",
+      "Non-nightlife zone (≤3 venues)"
+    )
+  )
+
+if (interactive()) cat("\nCombined zone-level panel (TLC trips + nightlife intensity):\n")
+
+# knitr::kable(
+  # head(zone_panel, 6),
+  # format = "html",
+  # caption = "Zone-Level Panel: TLC Trips + Nightlife Intensity"
+# )
+
+zone_panel_path <- file.path(base_dir, "tlc_zone_panel.rds")
+saveRDS(zone_panel, zone_panel_path)
+if (interactive()) cat("\nSaved zone_panel to ", zone_panel_path, "\n")
+invisible(NULL)
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| results: "hide"
+
+# 1) Zones with trips (based on your filtered trips_by_zone_period)
+zones_with_trips <- zone_panel %>%
+  distinct(LocationID) %>%
+  summarise(n = n()) %>%
+  pull(n)
+
+# 2) Zones with nightlife venues (any count > 0)
+zones_with_any_nightlife <- nightlife_by_zone %>%
+  filter(n_nightlife > 0) %>%
+  distinct(LocationID) %>%
+  summarise(n = n()) %>%
+  pull(n)
+
+# 3) Nightlife zones (your actual rule: >=4 venues, i.e., >3)
+nightlife_zones_ge4 <- nightlife_by_zone %>%
+  filter(n_nightlife > 3) %>%
+  distinct(LocationID) %>%
+  summarise(n = n()) %>%
+  pull(n)
+
+cat("\n✅ OFFICIAL COUNTS\n")
+cat("Zones with trips (2019/2020/2023):", zones_with_trips, "\n")
+cat("Zones with ANY nightlife venues:", zones_with_any_nightlife, "\n")
+cat("Nightlife zones (>=4 venues):", nightlife_zones_ge4, "\n")
+```
+
+---
+
+```{r}
+#| label: fill_zone_name
+#| echo: false
+#| message: false
+#| warning: false
+
+library(sf)
+library(dplyr)
+
+taxi_dir <- file.path(base_dir, "tlc_zones")
+
+# Read TLC zones metadata (names)
+zones_meta <- st_read(
+  dsn   = taxi_dir,
+  layer = "taxi_zones",
+  quiet = TRUE
+) %>%
+  st_drop_geometry() %>%
+  select(LocationID, borough, zone) %>%
+  rename(borough_sf = borough, zone_sf = zone)
+
+# IMPORTANT: if zone_panel does not already have borough/zone columns, create them
+if (!"borough" %in% names(zone_panel)) zone_panel$borough <- NA_character_
+if (!"zone"    %in% names(zone_panel)) zone_panel$zone    <- NA_character_
+
+# Join and fill missing names
+zone_panel <- zone_panel %>%
+  left_join(zones_meta, by = "LocationID") %>%
+  mutate(
+    borough = dplyr::coalesce(borough, borough_sf),
+    zone    = dplyr::coalesce(zone,    zone_sf)
+  ) %>%
+  select(-borough_sf, -zone_sf)
+
+```
+
+#### Data Suitability: TLC Trips and Yelp Nightlife
+
+Night time TLC trips appear in 264 taxi zones, indicating broad citywide coverage. Yelp nightlife venues appear in 112 zones, reflecting the concentration of nightlife activity. Together, these datasets are well aligned for analyzing the relationship between nightlife intensity and night time mobility.
+
+```{r}
+# Basic coverage checks on the zone-level panel
+
+zones_with_trips <- zone_panel %>%
+filter(n_trips > 0) %>%
+summarize(
+n_zones_with_trips = n_distinct(LocationID)
+)
+
+zones_with_nightlife <- zone_panel %>%
+filter(n_trips > 0, n_nightlife > 0) %>%
+summarize(
+n_zones_with_trips_and_nightlife = n_distinct(LocationID)
+)
+
+coverage_summary <- bind_cols(zones_with_trips, zones_with_nightlife)
+
+# cat("\nCoverage of TLC night trips and Yelp nightlife across taxi zones:\n")
+# print(coverage_summary)
+knitr::kable(
+  coverage_summary,
+  format = "html",
+  caption = "Coverage of TLC Night Trips and Yelp Nightlife Across Taxi Zones",
+  digits = 0
+)
+```
+
+---
+
+#### Hourly Night Movement by COVID Period
+
+```{r}
+#| label: hourly_night_movement
+#| message: false
+#| warning: false
+
+library(DBI)
+library(duckdb)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(scales)
+
+# Ensure DuckDB connection exists (optional safety)
+if (!exists("con") || is.null(con) || !DBI::dbIsValid(con)) {
+  duckdb_path <- file.path(base_dir, "night_trips.duckdb")
+  con <- DBI::dbConnect(duckdb::duckdb(), dbdir = duckdb_path)
+}
+
+# 1) Build hourly counts by COVID period directly in DuckDB (same logic)
+hourly_counts_wrap <- DBI::dbGetQuery(
+  con,
+  "
+  WITH trips AS (
+    SELECT
+      -- Wrap night hours: 20–23 stay 20–23, 0–4 become 24–28
+      CASE
+        WHEN EXTRACT(hour FROM pickup_time) BETWEEN 20 AND 23
+          THEN EXTRACT(hour FROM pickup_time)
+        WHEN EXTRACT(hour FROM pickup_time) BETWEEN 0 AND 4
+          THEN EXTRACT(hour FROM pickup_time) + 24
+        ELSE NULL
+      END AS hour_wrap,
+      CASE
+        WHEN CAST(substr(ym, 1, 4) AS INTEGER) <  2020 THEN 'pre_covid'
+        WHEN CAST(substr(ym, 1, 4) AS INTEGER) =  2020 THEN 'during_covid'
+        ELSE 'post_covid'
+      END AS period
+    FROM tlc_night
+    WHERE
+      CAST(substr(ym, 1, 4) AS INTEGER) IN (2019, 2020, 2023)
+      AND PULocationID IS NOT NULL
+      AND distance_miles IS NOT NULL AND distance_miles > 0
+      AND total_fare    IS NOT NULL AND total_fare    > 0
+      AND date_diff('minute', pickup_time, dropoff_time) BETWEEN 1 AND 180
+  )
+  SELECT
+    period,
+    hour_wrap AS hour,
+    COUNT(*) AS n_trips
+  FROM trips
+  WHERE hour_wrap IS NOT NULL
+  GROUP BY period, hour
+  ORDER BY period, hour
+  "
+) %>%
+  mutate(
+    period = factor(
+      period,
+      levels = c("pre_covid", "during_covid", "post_covid"),
+      labels = c("Pre-COVID", "During COVID", "Post-COVID")
+    )
+  )
+
+# 2) Plot: polished title, y-axis in millions, nicer theme
+p_hourly <- ggplot(
+  hourly_counts_wrap,
+  aes(x = hour, y = n_trips, color = period)
+) +
+  geom_line(linewidth = 1) +
+  scale_x_continuous(
+    limits = c(20, 28),
+    breaks = c(20,21,22,23,24,25,26,27,28),
+    labels = c("8 PM","9 PM","10 PM","11 PM","12 AM",
+               "1 AM","2 AM","3 AM","4 AM")
+  ) +
+  scale_y_continuous(
+    limits = c(0, 20e6),  
+    labels = label_number(scale = 1e-6, suffix = "M"),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    title    = "Hourly Night Movement\nCOVID Period (8 PM–4 AM)",
+    x        = "Hour of Night",
+    y        = "Number of Trips (millions)",
+    color    = "Period"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title      = element_text(face = "bold", size = 18, hjust = 0.5),
+    axis.title.x    = element_text(face = "bold"),
+    axis.title.y    = element_text(face = "bold"),
+    axis.text.x     = element_text(face = "bold"),
+    panel.border    = element_rect(color = "black", fill = NA, linewidth = 0.8),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor   = element_blank(),
+    legend.position    = "right"
+  )
+
+ggplotly(
+  p_hourly,
+  tooltip = c("hour", "n_trips", "period")
+)
+
+```
+
+COVID sharply reduced night travel at all hours, with the largest drop after midnight. Post COVID trips rebound earlier in the evening, peaking from eight to eleven PM, while late night travel after two AM remains weaker than before, indicating a lasting shift toward earlier nights.
+
+---
+
+#### Weekend vs Weekday Night Movement
+
+```{r}
+#| label: fig_weekend_weekday
+#| echo: false
+#| message: false
+#| warning: false
+
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(scales)   # for label_number() + cut_short_scale()
+
+# Full-data weekend vs weekday hourly movement using DuckDB
+weekend_hourly_wrap <- DBI::dbGetQuery(
+  con,
+  "
+  WITH trips AS (
+    SELECT
+      CASE
+        WHEN EXTRACT(hour FROM pickup_time) BETWEEN 20 AND 23
+          THEN EXTRACT(hour FROM pickup_time)
+        WHEN EXTRACT(hour FROM pickup_time) BETWEEN 0 AND 4
+          THEN EXTRACT(hour FROM pickup_time) + 24
+        ELSE NULL
+      END AS hour_wrap,
+      CASE
+        WHEN CAST(substr(ym, 1, 4) AS INTEGER) <  2020 THEN 'pr_covid'
+        WHEN CAST(substr(ym, 1, 4) AS INTEGER) =  2020 THEN 'covid'
+        ELSE 'pst_covid'
+      END AS period,
+      CASE
+        WHEN strftime('%w', pickup_time) IN ('5', '6') 
+          THEN 'Weekend (Fri–Sat)'
+        ELSE 'Weekday (Sun–Thu)'
+      END AS weekend_flag
+    FROM tlc_night
+  )
+  SELECT
+    weekend_flag,
+    period,
+    hour_wrap AS hour,
+    COUNT(*) AS n_trips
+  FROM trips
+  WHERE hour_wrap IS NOT NULL
+  GROUP BY weekend_flag, period, hour
+  ORDER BY weekend_flag, period, hour;
+  "
+)
+
+# Plot
+p_weekend <- ggplot(
+  weekend_hourly_wrap,
+  aes(
+    x = hour,
+    y = n_trips,
+    color = period,
+    linetype = weekend_flag
+  )
+) +
+  geom_line(linewidth = 1) +
+  scale_x_continuous(
+    breaks = 20:28,
+    labels = c("8 PM","9 PM","10 PM","11 PM","12 AM",
+               "1 AM","2 AM","3 AM","4 AM")
+  ) +
+  scale_y_continuous(
+    labels = label_number(scale_cut = cut_short_scale())  # → 500K, 1M, 2.5M, …
+  ) +
+  labs(
+    title = "Weekend vs Weekday Night Movement\nCOVID Period (8 PM–4 AM)",
+    x = "Hour of Night",
+    y = "Number of Trips",
+    color = "Period",
+    linetype = "Weekend/Weekday"
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border     = element_rect(color = "black", fill = NA, linewidth = 1)
+  )
+
+ggplotly(p_weekend, tooltip = c("hour","n_trips","period","weekend_flag"))
+
+```
+
+COVID reshaped night mobility but did not permanently weaken NYC’s weekend nightlife.
+
+> Weekend night trips fell sharply in 2020,
+> rebounded fastest in the post COVID period,
+> and restored the traditional weekend and weekday gap, reinforcing nightlife as a key driver of night time travel.
+
+---
+
+#### Trip Distance and Duration by COVID Period
+
+```{r}
+#| label: trip_distance_duration
+#| message: false
+#| warning: false
+
+library(dplyr)
+
+distance_duration_summary <- DBI::dbGetQuery(
+  con,
+  "
+  WITH base AS (
+    SELECT
+      CASE
+        WHEN CAST(substr(ym, 1, 4) AS INTEGER) <  2020 THEN 'pre_covid'
+        WHEN CAST(substr(ym, 1, 4) AS INTEGER) =  2020 THEN 'during_covid'
+        ELSE 'post_covid'
+      END AS period,
+      distance_miles,
+      date_diff('minute', pickup_time, dropoff_time) AS trip_minutes
+    FROM tlc_night
+    WHERE
+      PULocationID IS NOT NULL
+      AND distance_miles IS NOT NULL AND distance_miles > 0
+      AND total_fare    IS NOT NULL AND total_fare    > 0
+      AND date_diff('minute', pickup_time, dropoff_time) BETWEEN 1 AND 180
+  )
+  SELECT
+    period,
+    AVG(distance_miles)   AS mean_distance,
+    AVG(trip_minutes)     AS mean_minutes
+  FROM base
+  GROUP BY period
+  ORDER BY period;
+  "
+)
+
+distance_duration_summary$period <- factor(
+  distance_duration_summary$period,
+  levels = c("pre_covid", "during_covid", "post_covid")
+)
+
+knitr::kable(
+  distance_duration_summary,
+  format  = "html",
+  caption = "Average Night Trip Distance and Duration by COVID Period (Full Data)",
+  digits  = 2
+)
+
+```
+
+• During COVID (2020)
+
+> Night trips were shortest in both distance and duration, indicating reduced travel radius and localized movement.
+
+• *Pre COVID (2019)
+
+> Trips were slightly shorter in distance but longer in duration, reflecting normal congestion and established nightlife patterns.
+
+• Post COVID (2023)
+
+> Trips became longer than both pre- and during-COVID in distance and duration, suggesting a broader spatial spread of night activity.
+
+• Overall Insight
+
+COVID temporarily compressed night time travel. After reopening, night mobility rebounded with longer and wider-reaching trips than before the pandemic.
+
+---
+
+#### Provider Mix: Yellow vs Rideshare Across COVID Periods
+
+![](rideshare.png){width="55%" height="55%" fig-align="center"}
+
+*Rideshare services became a dominant mode of night-time travel — strongly reflected in TLC trip data.*
+
+The provider mix reveals that rideshare (FHVHV) dominated NYC night trips in all periods and became even more dominant during COVID.
+
+```{r}
+#| label: provider_mix_interactive
+#| echo: false
+#| message: false
+#| warning: false
+
+library(dplyr)
+library(ggplot2)
+library(plotly)
+
+# Compute provider mix from FULL tlc_night table in DuckDB
+provider_mix <- DBI::dbGetQuery(
+  con,
+  "
+  WITH base AS (
+  SELECT
+    CASE
+      WHEN CAST(substr(ym, 1, 4) AS INTEGER) = 2019 THEN 'pre_covid'
+      WHEN CAST(substr(ym, 1, 4) AS INTEGER) = 2020 THEN 'during_covid'
+      WHEN CAST(substr(ym, 1, 4) AS INTEGER) = 2023 THEN 'post_covid'
+      ELSE NULL
+    END AS period,
+    provider
+  FROM tlc_night
+  WHERE CAST(substr(ym, 1, 4) AS INTEGER) IN (2019, 2020, 2023)
+)
+SELECT
+  period,
+  provider,
+  COUNT(*) AS n_trips
+FROM base
+WHERE period IS NOT NULL
+GROUP BY period, provider
+ORDER BY period, provider;
+  "
+) %>%
+  as_tibble() %>%
+  group_by(period) %>%
+  mutate(
+    total_period_trips = sum(n_trips),
+    share              = n_trips / total_period_trips
+  ) %>%
+  ungroup() %>%
+  mutate(
+    period = factor(period, levels = c("pre_covid", "during_covid", "post_covid")),
+    # share_label = scales::percent(share, accuracy = 1),
+    share_label = scales::percent(share, accuracy = 0.1),
+    provider = factor(
+      provider,
+      levels = c("fhvhv", "yellow"),
+      labels = c("Rideshare (FHVHV)", "Yellow taxi")
+    )
+  )
+
+p_provider <- ggplot(
+  provider_mix,
+  aes(
+    x    = period,
+    y    = share,
+    fill = provider,
+    text = paste0(
+      "Period: ", period, "<br>",
+      "Provider: ", provider, "<br>",
+      "Share of trips: ", share_label, "<br>",
+      "Night trips: ", scales::comma(n_trips)
+    )
+  )
+) +
+  geom_col(width = 0.65, color = "white") +
+  geom_text(
+    aes(label = share_label),
+    position = position_stack(vjust = 0.5),
+    color = "black", size = 5.5, fontface = "bold", alpha = 0.35
+  ) +
+  geom_text(
+    aes(label = share_label),
+    position = position_stack(vjust = 0.5),
+    color = "white", size = 4.5, fontface = "bold"
+  ) +
+  scale_y_continuous(
+    labels = scales::percent_format(accuracy = 1),
+    expand = c(0, 0),
+    limits = c(0, 1)
+  ) +
+  scale_fill_manual(
+    values = c("Rideshare (FHVHV)" = "#F9735B",
+               "Yellow taxi"       = "#00C1C7"),
+    name = "Provider"
+  ) +
+  labs(
+    title    = "Provider Mix for Night Trips by COVID Period",
+    subtitle = "Rideshare dominates night-time trips in all periods, especially during COVID",
+    x        = "COVID Period",
+    y        = "Share of Night Trips"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position    = "right",
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor   = element_blank(),
+    plot.title         = element_text(face = "bold", size = 18),
+    plot.subtitle      = element_text(size = 12),
+    axis.title.x       = element_text(face = "bold", margin = margin(t = 8)),
+    axis.title.y       = element_text(face = "bold", margin = margin(r = 8))
+  )
+
+ggplotly(p_provider, tooltip = "text") %>%
+  layout(
+    hoverlabel = list(bgcolor = "white")
+  )
+
+```
+
+> Pre COVID (2019): Yellow taxis handled about 23% of night-time trips, while rideshare providers accounted for roughly 77%.
+
+> During COVID (2020): Yellow’s share fell sharply to about 12%, as rideshare climbed to nearly 88% of all night trips.
+
+> Post COVID (2023): Yellow taxis remain at roughly 12%, while rideshare continues to dominate with about 88% of night trips.
+
+Overall, the provider mix indicates a structural shift in NYC’s nightlife mobility, with Uber/Lyft style rideshare services remaining the primary mode of night time travel even after the city reopened.
+
+---
+
+::: callout-tip
+**Why it matters:** The post COVID night economy is now overwhelmingly rideshare driven. Even after reopening, Yellow taxi share stays low, signaling a structural not temporary mode shift in late night mobility.
+:::
+
+---
+
+#### Nightlife Hotspots and Night Trip Intensity
+
+**Nightlife Density (Yelp venues):**
+Nightlife is highly concentrated in a small set of Manhattan zones (e.g., East Village, Lower East Side, Midtown West). Most zones outside Manhattan have few or no nightlife venues, highlighting a tightly clustered late night economy.
+
+```{r}
+#| label: nightlife_density_leaflet
+#| message: false
+#| warning: false
+
+library(sf)
+library(dplyr)
+library(leaflet)
+library(htmltools)
+library(scales)
+
+# 1) Build zone-level nightlife summary from zone_panel (NYC only, no EWR)
+nightlife_map_df <- zone_panel %>%
+  group_by(LocationID, borough, zone) %>%
+  summarise(
+    n_nightlife = max(n_nightlife, na.rm = TRUE),   # nightlife venues per zone
+    avg_rating  = mean(avg_rating, na.rm = TRUE),   # average Yelp rating
+    .groups     = "drop"
+  ) %>%
+  mutate(
+    n_nightlife = ifelse(is.infinite(n_nightlife), 0L, n_nightlife)
+  ) %>%
+  # drop Newark Airport – project is NYC only
+  filter(borough != "EWR")
+
+# 2) Read TLC taxi zones geometry
+taxi_dir  <- file.path(base_dir, "tlc_zones")
+zones_sf  <- st_read(
+  dsn   = taxi_dir,
+  layer = "taxi_zones",
+  quiet = TRUE
+) %>%
+  st_transform(4326) %>%
+  select(LocationID, geometry)
+
+# 3) Join geometry with nightlife counts
+nightlife_map_sf <- zones_sf %>%
+  left_join(nightlife_map_df, by = "LocationID") %>%
+  mutate(
+    n_nightlife = replace_na(n_nightlife, 0L),
+    avg_rating  = ifelse(is.na(avg_rating), NA_real_, avg_rating)
+  )
+
+# 4) Define color palette and labels for tooltips
+
+nightlife_pal <- colorNumeric(
+  palette  = viridisLite::magma(256),
+  domain   = nightlife_map_sf$n_nightlife,  # now has 0 instead of NA
+  na.color = "#f0f0f0"
+)
+
+nightlife_labels <- sprintf(
+  "<strong>%s</strong><br/>
+   Borough: %s<br/>
+   Nightlife venues: %s<br/>
+   Avg Yelp rating: %s",
+  ifelse(is.na(nightlife_map_sf$zone), "Unknown zone", nightlife_map_sf$zone),
+  ifelse(is.na(nightlife_map_sf$borough), "Unknown", nightlife_map_sf$borough),
+  comma(nightlife_map_sf$n_nightlife),
+  ifelse(is.na(nightlife_map_sf$avg_rating),
+         "N/A",
+         round(nightlife_map_sf$avg_rating, 1))
+) |> lapply(htmltools::HTML)
+
+# 5) Interactive leaflet map
+leaflet(nightlife_map_sf) |>
+  addProviderTiles("CartoDB.Positron") |>
+  addPolygons(
+    fillColor   = ~nightlife_pal(n_nightlife),
+    weight      = 0.3,
+    color       = "#444444",
+    opacity     = 1,
+    fillOpacity = 0.8,
+    highlightOptions = highlightOptions(
+      weight       = 2,
+      color        = "black",
+      bringToFront = TRUE
+    ),
+    label        = nightlife_labels,
+    labelOptions = labelOptions(
+      style     = list("font-size" = "12px"),
+      direction = "auto"
+    )
+  ) |>
+  addLegend(
+    "bottomright",
+    pal    = nightlife_pal,
+    values = ~n_nightlife,
+    title  = "Nightlife venues<br>(Yelp count)",
+    opacity = 0.8
+  )
+
+```
+
+---
+
+**Night Trip Intensity (TLC trips):**
+
+Night travel is concentrated in nightlife heavy Manhattan zones. Trips fall sharply during COVID and rebound most strongly in these zones after COVID, showing they remain the main drivers of night time movement.
+
+```{r}
+#| label: trips_map_prep_nightlife
+#| echo: false
+#| message: false
+#| warning: false
+
+library(dplyr)
+
+# 1) Aggregate night trips by zone, period, and nightlife zone
+
+trips_map_df <- zone_panel %>%
+dplyr::group_by(
+LocationID,
+borough,
+zone,
+nightlife_zone,   # uses your defined nightlife zone flag
+period
+) %>%
+dplyr::summarize(
+n_trips_period = sum(n_trips, na.rm = TRUE),
+.groups        = "drop"
+) %>%
+
+# NYC only – drop Newark Airport (EWR)
+
+dplyr::filter(borough != "EWR") %>%
+dplyr::mutate(
+period = factor(
+period,
+levels = c("pre_covid", "during_covid", "post_covid")
+),
+nightlife_zone = factor(
+nightlife_zone,
+levels = c("Nightlife zone (≥4 venues)",
+"Non-nightlife zone (≤3 venues)")
+)
+)
+
+# 2) Join with taxi-zone geometry so we can draw a map
+
+trips_map_sf <- zones_sf %>%
+dplyr::left_join(trips_map_df, by = "LocationID") %>%
+dplyr::mutate(
+# Make nightlife zones slightly brighter / more opaque
+fill_opacity = dplyr::case_when(
+nightlife_zone == "Nightlife zone (≥4 venues)"     ~ 0.90,
+nightlife_zone == "Non-nightlife zone (≤3 venues)" ~ 0.55,
+TRUE                                               ~ 0.30
+)
+)
+
+```
+
+```{r}
+#| label: trips_map_leaflet_bubbles_both
+#| echo: false
+#| message: false
+#| warning: false
+
+library(leaflet)
+library(htmltools)
+library(scales)
+library(dplyr)
+library(sf)
+
+# 1) Start from trips_map_sf and create a clean 2-category zone type
+trips_points <- trips_map_sf %>%
+  # drop rows with no trips (just in case)
+  filter(!is.na(n_trips_period)) %>%
+  mutate(
+    nightlife_zone_clean = case_when(
+      nightlife_zone == "Nightlife zone (≥4 venues)"     ~ "Nightlife zone (≥4 venues)",
+      nightlife_zone == "Non-nightlife zone (≤3 venues)" ~ "Non-nightlife zone (≤3 venues)",
+      TRUE                                               ~ "Non-nightlife zone (≤3 venues)"  # catch any NA/other
+    )
+  ) %>%
+  st_centroid(of_largest_polygon = TRUE) %>%
+  cbind(st_coordinates(.))   # adds X (lon) and Y (lat)
+
+# 2) Color palette: nightlife = red, non-nightlife = blue
+zone_pal <- colorFactor(
+  palette = c(
+    "Nightlife zone (≥4 venues)"     = "#E74C3C",  # red
+    "Non-nightlife zone (≤3 venues)" = "#3498DB"   # blue
+  ),
+  domain = c(
+    "Nightlife zone (≥4 venues)",
+    "Non-nightlife zone (≤3 venues)"
+  )
+)
+
+# 3) Bubble size scale (bigger = more night trips)
+radius_scale <- function(x) {
+  r <- sqrt(x)
+  rescaled <- scales::rescale(r, to = c(4, 22), from = range(r, na.rm = TRUE))
+  pmax(3, rescaled)  # ensure minimum radius
+}
+
+# 4) Split by COVID period
+pts_pre    <- subset(trips_points, period == "pre_covid")
+pts_during <- subset(trips_points, period == "during_covid")
+pts_post   <- subset(trips_points, period == "post_covid")
+
+# 5) Hover labels
+trip_labels <- function(data) {
+  sprintf(
+    "<strong>%s</strong><br/>
+     Borough: %s<br/>
+     Period: %s<br/>
+     %s<br/>
+     Night trips (8 PM–4 AM): %s",
+    ifelse(is.na(data$zone),    "Unknown zone", data$zone),
+    ifelse(is.na(data$borough), "Unknown",      data$borough),
+    dplyr::case_when(
+      data$period == "pre_covid"    ~ "Pre-COVID (2019)",
+      data$period == "during_covid" ~ "During COVID (2020)",
+      data$period == "post_covid"   ~ "Post-COVID (2023)",
+      TRUE                          ~ as.character(data$period)
+    ),
+    data$nightlife_zone_clean,
+    scales::comma(data$n_trips_period)
+  ) |>
+    lapply(htmltools::HTML)
+}
+
+# 6) Build the leaflet map
+leaflet() |>
+  addProviderTiles("CartoDB.Positron") |>
+
+  # background polygons for all zones
+  addPolygons(
+    data        = trips_map_sf,
+    fillColor   = "#f3f3f3",
+    weight      = 0.3,
+    color       = "#bbbbbb",
+    fillOpacity = 0.5,
+    group       = "Base"
+  ) |>
+
+  # Pre-COVID bubbles
+  addCircleMarkers(
+    data        = pts_pre,
+    lng         = ~X, lat = ~Y,
+    radius      = ~radius_scale(n_trips_period),
+    fillColor   = ~zone_pal(nightlife_zone_clean),
+    color       = "white",
+    weight      = 0.7,
+    fillOpacity = 0.9,
+    label       = trip_labels(pts_pre),
+    group       = "Pre-COVID"
+  ) |>
+
+  # During-COVID bubbles
+  addCircleMarkers(
+    data        = pts_during,
+    lng         = ~X, lat = ~Y,
+    radius      = ~radius_scale(n_trips_period),
+    fillColor   = ~zone_pal(nightlife_zone_clean),
+    color       = "white",
+    weight      = 0.7,
+    fillOpacity = 0.9,
+    label       = trip_labels(pts_during),
+    group       = "During COVID"
+  ) |>
+
+  # Post-COVID bubbles
+  addCircleMarkers(
+    data        = pts_post,
+    lng         = ~X, lat = ~Y,
+    radius      = ~radius_scale(n_trips_period),
+    fillColor   = ~zone_pal(nightlife_zone_clean),
+    color       = "white",
+    weight      = 0.7,
+    fillOpacity = 0.9,
+    label       = trip_labels(pts_post),
+    group       = "Post-COVID"
+  ) |>
+
+  # Color legend (nightlife vs non-nightlife)
+  addLegend(
+    "bottomleft",
+    pal    = zone_pal,
+    values = trips_points$nightlife_zone_clean,
+    title  = "Zone type",
+    opacity = 1
+  ) |>
+
+  # Size legend (text explaining bubbles)
+  addLegend(
+    position = "bottomright",
+    colors   = "transparent",
+    labels   = "Bubble size ∝ night trips (8 PM–4 AM)",
+    title    = "Trip volume",
+    opacity  = 0
+  ) |>
+
+  # Layer control
+  addLayersControl(
+    overlayGroups = c("Pre-COVID", "During COVID", "Post-COVID"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+
+```
+
+---
+
+#### Nightlife vs Night Trips: Zone-Level Relationship
+
+```{r}
+#| echo: false
+#| results: 'hide'
+
+zone_period_agg <- zone_panel %>%
+  filter(borough != "EWR") %>%
+  group_by(
+    LocationID,
+    borough,
+    zone,
+    nightlife_zone,   # <-- use your defined nightlife zone
+    nightlife_bin,
+    n_nightlife,
+    period
+  ) %>%
+  summarize(
+    n_trips_period = sum(n_trips, na.rm = TRUE),
+    .groups        = "drop"
+  ) %>%
+  mutate(
+    period = factor(period, levels = c("pre_covid", "during_covid", "post_covid")),
+    nightlife_bin = factor(
+      nightlife_bin,
+      levels = c("No nightlife venues", "1–5 venues", "6–15 venues", "16+ venues")
+    ),
+    nightlife_zone = factor(
+      nightlife_zone,
+      levels = c("Non-nightlife zone (≤3 venues)", "Nightlife zone (≥4 venues)")
+    )
+  )
+
+zone_period_agg_preview <- head(zone_period_agg, 6)
+
+knitr::kable(
+  zone_period_agg_preview,
+  format  = "html",
+  caption = "Sample of Zone-Level Panel: Nightlife vs Night Trips",
+  digits  = 0
+) |>
+  kableExtra::kable_styling(
+    full_width        = FALSE,
+    bootstrap_options = c("striped", "hover")
+  )
+
+```
+
+```{r nightlife_vs_trips_bins_clean, echo=FALSE, message=FALSE, warning=FALSE}
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(scales)
+
+# 1. Prepare data (no airports)
+zone_period_bins <- zone_panel %>%
+  filter(!(borough %in% c("EWR", "JFK", "LGA"))) %>%
+  mutate(
+    nightlife_bin_short = case_when(
+      nightlife_bin == "No nightlife venues" ~ "0",
+      nightlife_bin == "1–5 venues" ~ "1–5",
+      nightlife_bin == "6–15 venues" ~ "6–15",
+      nightlife_bin == "16+ venues" ~ "16+"
+    ),
+    nightlife_bin_short = factor(
+      nightlife_bin_short,
+      levels = c("0", "1–5", "6–15", "16+")
+    ),
+    period = factor(period, levels = c("pre_covid", "during_covid", "post_covid"))
+  ) %>%
+  filter(!is.na(period)) %>% # The NA panel came from rows outside my defined COVID periods. Since NA is not a real period, I filtered it out so the plot shows only pre-, during-, and post-COVID.
+  group_by(LocationID, borough, zone, nightlife_bin_short, n_nightlife, period) %>%
+  summarize(n_trips_period = sum(n_trips, na.rm = TRUE), .groups = "drop")
+
+# 2. Polished plot
+p_bins_clean <- ggplot(
+  zone_period_bins,
+  aes(
+    x = nightlife_bin_short,
+    y = n_trips_period,
+    color = nightlife_bin_short,
+    text = paste0(
+      "<b>Zone:</b> ", zone, "<br>",
+      "<b>Borough:</b> ", borough, "<br>",
+      "<b>Nightlife bin:</b> ", nightlife_bin_short, "<br>",
+      "<b>Trips:</b> ", scales::comma(n_trips_period), "<br>",
+      "<b>Period:</b> ", period
+    )
+  )
+) +
+  geom_jitter(alpha = 0.6, size = 2, width = 0.25) +
+  scale_y_continuous(
+    labels = label_number(scale_cut = cut_short_scale())  # 300k, 1M, 2M, ...
+  ) +
+  labs(
+    title = "Night Trips vs Nightlife Zone Category",
+    subtitle = "Zones grouped by nightlife intensity across COVID periods",
+    x = "Nightlife zone category",
+    y = "Night trips per period (8 PM–4 AM)"
+  ) +
+  facet_wrap(~ period, scales = "free_y") +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "none",
+    strip.text = element_text(face = "bold", size = 13),
+    axis.text.x = element_text(face = "bold", size = 12),
+    plot.title = element_text(face = "bold", size = 19),
+    plot.subtitle = element_text(size = 12)
+  )
+
+ggplotly(p_bins_clean, tooltip = "text") %>%
+  layout(hoverlabel = list(bgcolor = "white"))
+
+```
+
+This figure shows that night time mobility closely follows nightlife intensity in all COVID periods. Before COVID, zones with the most nightlife generated the highest trip volumes. During COVID, trips collapsed citywide, but the ranking by nightlife intensity remained unchanged. After COVID, nightlife heavy zones rebounded fastest, while low nightlife zones recovered more slowly, confirming nightlife intensity as a key driver of night time travel.
+
+---
+
+#### Nightlife vs Non-Nightlife Zones
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(scales)
+
+# ---- 1. Compute averages (remove airports) ----
+
+avg_zone_trips <- zone_panel %>%
+filter(!(borough %in% c("EWR", "JFK", "LGA"))) %>%
+group_by(period, nightlife_zone) %>%
+summarize(
+avg_trips = mean(n_trips, na.rm = TRUE),
+.groups = "drop"
+) %>%
+mutate(
+period = factor(period, levels = c("pre_covid", "during_covid", "post_covid")),
+nightlife_zone = factor(
+nightlife_zone,
+levels = c("Nightlife zone (≥4 venues)", "Non-nightlife zone (≤3 venues)")
+)
+)
+
+# ---- 2. Build ggplot with tooltip text ----
+
+p_bar <- ggplot(
+avg_zone_trips,
+aes(
+x = period,
+y = avg_trips,
+fill = nightlife_zone,
+text = paste0(
+"<b>COVID period:</b> ", period, "<br>",
+"<b>Zone type:</b> ", nightlife_zone, "<br>",
+"<b>Avg trips per zone:</b> ", scales::comma(round(avg_trips))
+)
+)
+) +
+geom_col(position = "dodge") +
+scale_y_continuous(
+labels = scales::label_number(scale_cut = scales::cut_short_scale())   # 300k, 1M, 2M
+) +
+labs(
+title = "Night Trips in Nightlife vs Non-Nightlife Zones",
+x = "COVID period",
+y = "Average night trips per zone (8 PM–4 AM)",
+fill = "Zone type"
+) +
+theme_minimal(base_size = 14) +
+theme(
+plot.title = element_text(face = "bold", size = 18),
+legend.position = "right"
+)
+
+# ---- 3. Convert to interactive Plotly ----
+
+ggplotly(p_bar, tooltip = "text") %>%
+layout(
+hoverlabel = list(bgcolor = "white"),
+legend = list(title = list(text = "<b>Zone type</b>"))
+)
+
+```
+
+Nightlife zones generate far more night trips than non nightlife zones across all periods. Before COVID they averaged about four times more trips per zone, remained more active during COVID, and rebounded more strongly after COVID, confirming the structural concentration of NYC night time mobility in nightlife districts.
+
+---
+
+### How Did COVID Disrupt Night-Time Mobility Patterns?
+
+**Seasonality Check: COVID vs Normal Seasonal Swings**
+
+```{r}
+#| label: seasonal_citywide_bars
+#| echo: false
+#| message: false
+#| warning: false
+
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(plotly)
+library(scales)
+
+# 0) Make sure nightly_agg exists (rebuild if needed)
+if (!exists("nightly_agg")) {
+  nightly_agg <- DBI::dbGetQuery(
+    con,
+    "
+    WITH base AS (
+      SELECT
+        DATE(pickup_time) AS pickup_date,
+        distance_miles,
+        date_diff('minute', pickup_time, dropoff_time) AS trip_minutes
+      FROM tlc_night
+      WHERE
+        PULocationID IS NOT NULL
+        AND distance_miles IS NOT NULL AND distance_miles > 0
+        AND total_fare    IS NOT NULL AND total_fare    > 0
+        AND date_diff('minute', pickup_time, dropoff_time) BETWEEN 1 AND 180
+        AND DATE(pickup_time) BETWEEN DATE '2019-01-01' AND DATE '2023-12-31'
+    )
+    SELECT
+      pickup_date,
+      CASE
+        WHEN pickup_date < DATE '2020-01-01' THEN 'pre_covid'
+        WHEN pickup_date < DATE '2021-01-01' THEN 'during_covid'
+        ELSE 'post_covid'
+      END AS period,
+      COUNT(*)            AS nightly_trips,
+      AVG(distance_miles) AS avg_distance,
+      AVG(trip_minutes)   AS avg_minutes
+    FROM base
+    GROUP BY pickup_date, period
+    ORDER BY pickup_date, period;
+    "
+  ) |>
+    dplyr::mutate(
+      period = factor(
+        period,
+        levels = c("pre_covid", "during_covid", "post_covid")
+      )
+    )
+}
+
+# 1) Build seasonal summary from nightly_agg
+seasonal_citywide <- nightly_agg %>%
+  mutate(
+    month = month(pickup_date),
+    season = case_when(
+      month %in% c(12, 1, 2)  ~ "Winter",
+      month %in% c(3, 4, 5)   ~ "Spring",
+      month %in% c(6, 7, 8)   ~ "Summer",
+      month %in% c(9, 10, 11) ~ "Fall",
+      TRUE                    ~ NA_character_
+    ),
+    season = factor(season, levels = c("Winter", "Spring", "Summer", "Fall")),
+    period = factor(period, levels = c("pre_covid", "during_covid", "post_covid"))
+  ) %>%
+  group_by(period, season) %>%
+  summarise(
+    mean_trips = mean(nightly_trips, na.rm = TRUE),
+    .groups    = "drop"
+  )
+
+# 2) Facet labels
+period_labs <- c(
+  pre_covid    = "Pre-COVID\n(2019)",
+  during_covid = "During COVID\n(2020)",
+  post_covid   = "Post-COVID\n(2023)"
+)
+
+# 3) Plot
+p_season_bars <- ggplot(
+  seasonal_citywide,
+  aes(
+    x    = season,
+    y    = mean_trips,
+    fill = season,
+    text = paste0(
+      "<b>Period:</b> ", gsub("\n", " ", period_labs[period]), "<br>",
+      "<b>Season:</b> ", season, "<br>",
+      "<b>Mean nightly trips:</b> ", comma(round(mean_trips))
+    )
+  )
+) +
+  geom_col(width = 0.8, color = "white") +
+  scale_x_discrete(
+    labels = c(
+      "Winter" = "Win",
+      "Spring" = "Spr",
+      "Summer" = "Sum",
+      "Fall"   = "Fal"
+    )
+  ) +
+  scale_y_continuous(
+    labels = label_number(scale_cut = cut_short_scale()),
+    expand = expansion(mult = c(0.05, 0.05))
+  ) +
+  scale_fill_manual(
+    values = viridisLite::magma(4, begin = 0.15, end = 0.85),
+    name   = "Season"
+  ) +
+  facet_wrap(
+    ~ period,
+    nrow     = 1,
+    labeller = labeller(period = period_labs)
+  ) +
+  labs(
+    title    = "Seasonality of Night Trips by COVID Period",
+    subtitle = "Mean nightly trips (8 PM–4 AM), NYC, 2019–2023",
+    x        = "Season",
+    y        = "Mean nightly trips (8 PM–4 AM)"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.x  = element_text(face = "bold", size = 11, margin = margin(t = 6)),
+    axis.ticks.x = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 0.6),
+    strip.text   = element_text(face = "bold", size = 12,
+                                margin = margin(t = 8, b = 8)),
+    plot.title   = element_text(face = "bold", size = 20,
+                                margin = margin(b = 15)),
+    plot.subtitle = element_text(size = 12, margin = margin(t = 6, b = 10)),
+    plot.margin  = margin(t = 30, r = 20, b = 20, l = 20)
+  )
+
+ggplotly(p_season_bars, tooltip = "text") %>%
+  layout(hoverlabel = list(bgcolor = "white"))
+
+```
+
+The chart shows how NYC’s night time mobility (8 PM–4 AM) changed across seasons before, during, and after COVID. Before COVID, night travel showed clear seasonal peaks, especially in Spring and Fall. During COVID, trips collapsed across all seasons and seasonal differences largely disappeared. Post COVID, mobility rebounded but did not fully return to 2019 levels, with smoother and less pronounced seasonal variation, indicating more even night time travel throughout the year.
+
+---
+
+**Seasonality + Nightlife vs Non-Nightlife Zones**
+
+```{r}
+
+#| label: seasonal_nightlife_zones
+#| echo: false
+#| message: false
+#| warning: false
+
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(scales)
+
+# 1) Derive season from ym in zone_panel and summarize by period × season × zone type
+seasonal_zone_summary <- zone_panel %>%
+  filter(!(borough %in% c("EWR", "JFK", "LGA"))) %>%
+  filter(!is.na(period)) %>%  
+  mutate(
+    year  = as.integer(substr(ym, 1, 4)),
+    month = as.integer(substr(ym, 6, 7)),
+    season = case_when(
+      month %in% c(12, 1, 2)  ~ "Winter",
+      month %in% c(3, 4, 5)   ~ "Spring",
+      month %in% c(6, 7, 8)   ~ "Summer",
+      month %in% c(9, 10, 11) ~ "Fall",
+      TRUE                    ~ NA_character_
+    ),
+    season = factor(season, levels = c("Winter", "Spring", "Summer", "Fall")),
+    period = factor(period, levels = c("pre_covid", "during_covid", "post_covid")),
+    nightlife_zone = factor(
+      nightlife_zone,
+      levels = c("Nightlife zone (≥4 venues)", "Non-nightlife zone (≤3 venues)")
+    )
+  ) %>%
+  group_by(period, season, nightlife_zone) %>%
+  summarise(
+    total_trips = sum(n_trips, na.rm = TRUE),
+    .groups     = "drop"
+  )
+
+# 2) Facet labels with line-breaks (same style as your other seasonal chart)
+period_labs <- c(
+  pre_covid    = "Pre-COVID\n(2019)",
+  during_covid = "During COVID\n(2020)",
+  post_covid   = "Post-COVID\n(2023)"
+)
+
+# 3) Plot
+p_season_zone <- ggplot(
+  seasonal_zone_summary,
+  aes(
+    x    = season,
+    y    = total_trips,
+    fill = nightlife_zone,
+    text = paste0(
+      "<b>Period:</b> ", gsub("\n", " ", period_labs[period]), "<br>",
+      "<b>Season:</b> ", season, "<br>",
+      "<b>Zone type:</b> ", nightlife_zone, "<br>",
+      "<b>Night trips (total):</b> ", comma(total_trips)
+    )
+  )
+) +
+  geom_col(position = "dodge", width = 0.8) +
+
+  # Short season labels under bars
+  scale_x_discrete(
+    labels = c(
+      "Winter" = "Win",
+      "Spring" = "Spr",
+      "Summer" = "Sum",
+      "Fall"   = "Fal"
+    )
+  ) +
+  scale_y_continuous(
+    labels = label_number(scale_cut = cut_short_scale())
+  ) +
+  # Professional blue / orange palette
+  scale_fill_manual(
+    values = c(
+      "Nightlife zone (≥4 venues)"     = "#4E79A7",
+      "Non-nightlife zone (≤3 venues)" = "#F28E2B"
+    ),
+    name = "Zone type"
+  ) +
+  facet_wrap(
+    ~ period,
+    nrow     = 1,
+    labeller = labeller(period = period_labs)
+  ) +
+  labs(
+    title    = "Seasonal Nightlife vs Non-Nightlife Zones",
+    subtitle = "Total night trips (8 PM–4 AM) by season, zone type, and COVID period",
+    x        = "Season",
+    y        = "Total night trips"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    # Text & axes
+    plot.title.position = "plot",
+    plot.title   = element_text(
+      face   = "bold",
+      size   = 18,
+      hjust  = 0,
+      margin = margin(b = 4)
+    ),
+    plot.subtitle = element_text(
+      size   = 11,
+      hjust  = 0,
+      margin = margin(b = 12)
+    ),
+    axis.text.x = element_text(
+      face   = "bold",
+      size   = 11,
+      margin = margin(t = 6)
+    ),
+    axis.text.y = element_text(size = 10),
+    axis.title.x = element_text(
+      face   = "bold",
+      # margin = margin(t = 20)
+      margin = margin(t = 15, b = 10)
+    ),
+    axis.title.y = element_text(
+      face   = "bold",
+      margin = margin(r = 10)
+    ),
+
+    # Grid & panel
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor   = element_blank(),
+    panel.grid.major.y = element_line(color = "grey88"),
+    panel.border       = element_rect(color = "grey80", fill = NA, linewidth = 0.7),
+
+    # Facet strips
+    strip.background = element_rect(fill = "#f3f3f3", color = NA),
+    strip.text       = element_text(face = "bold", size = 12,
+                                    margin = margin(t = 6, b = 6)),
+
+    # Legend
+    legend.position   = "bottom",
+    legend.title      = element_text(face = "bold"),
+    legend.spacing.x  = unit(8, "pt"),
+
+    # Extra space so title & legend never overlap anything
+    plot.margin = margin(t = 30, r = 20, b = 60, l = 20)
+  )
+
+ggplotly(p_season_zone, tooltip = "text") %>%
+  layout(
+    hoverlabel = list(bgcolor = "white"),
+    legend = list(
+      orientation = "h",
+      x = 0.1,
+      y = -0.25
+    )
+  )
+
+```
+
+Nightlife zones dominate NYC’s night time mobility in every period. Before COVID, they generated far more trips especially in Spring and Fall. During COVID, trips collapsed and seasonality weakened. Post-COVID, nightlife zones rebounded to near pre-pandemic levels, while non-nightlife areas recovered more modestly.
+
+---
+
+### Analytical Strategy: Difference-in-Differences Logic
+
+Although observational, the analysis follows a difference in differences style approach. By comparing the same taxi zones over time and contrasting nightlife heavy zones with non nightlife zones, the analysis controls for fixed zone characteristics while isolating COVID related disruptions. This two axis comparison separates citywide shocks from nightlife specific effects, strengthening interpretation beyond simple correlation.
+
+---
+
+#### Bootstrap & permutation tests: mean nightly trips by period
+
+```{r}
+#| label: nightly_bootstrap_permutation
+#| code-fold: true
+#| message: false
+#| warning: false
+
+library(dplyr)
+
+set.seed(9750)  # for reproducibility
+
+# Helper: bootstrap CI for mean nightly trips difference between two periods
+
+bootstrap_diff <- function(data, period_a, period_b, B = 1000) {
+x <- data$nightly_trips[data$period == period_a]
+y <- data$nightly_trips[data$period == period_b]
+
+# observed difference
+
+obs_diff <- mean(x) - mean(y)
+
+# bootstrap
+
+boot_diffs <- replicate(B, {
+mean(sample(x, replace = TRUE)) - mean(sample(y, replace = TRUE))
+})
+
+ci <- quantile(boot_diffs, probs = c(0.025, 0.975), na.rm = TRUE)
+
+tibble(
+period_a   = period_a,
+period_b   = period_b,
+obs_diff   = obs_diff,
+ci_lower   = ci[1],
+ci_upper   = ci[2]
+)
+}
+
+# Helper: permutation test for mean difference
+
+perm_test_diff <- function(data, period_a, period_b, B = 2000) {
+sub <- data %>%
+    dplyr::filter(period %in% c(period_a, period_b)) %>%
+    dplyr::mutate(period = droplevels(factor(period)))
+
+x <- sub$nightly_trips[sub$period == period_a]
+y <- sub$nightly_trips[sub$period == period_b]
+
+obs_diff <- mean(x) - mean(y)
+pooled   <- sub$nightly_trips
+
+perm_diffs <- numeric(B)
+for (b in seq_len(B)) {
+perm_labels <- sample(sub$period)  # shuffle labels
+perm_diffs[b] <- mean(pooled[perm_labels == period_a]) -
+mean(pooled[perm_labels == period_b])
+}
+
+# two-sided p-value
+
+p_value <- mean(abs(perm_diffs) >= abs(obs_diff))
+
+tibble(
+period_a = period_a,
+period_b = period_b,
+obs_diff = obs_diff,
+p_value  = p_value
+)
+}
+
+# Define period pairs to compare
+
+period_pairs <- list(
+c("pre_covid",   "during_covid"),
+c("pre_covid",   "post_covid"),
+c("during_covid","post_covid")
+)
+
+# Run bootstrap CI for each pair
+
+boot_results <- purrr::map_dfr(
+period_pairs,
+~bootstrap_diff(nightly_agg, .x[1], .x[2])
+)
+
+# Run permutation test for each pair
+
+perm_results <- purrr::map_dfr(
+period_pairs,
+~perm_test_diff(nightly_agg, .x[1], .x[2])
+)
+perm_results$raw_p_value <- perm_results$p_value
+
+# Combine results
+
+inference_results <- boot_results %>%
+  left_join(
+    perm_results,
+    by = c("period_a", "period_b", "obs_diff")
+  ) %>%
+  mutate(
+    obs_diff = round(obs_diff, 1),
+    ci_lower = round(ci_lower, 1),
+    ci_upper = round(ci_upper, 1),
+    p_value  = signif(p_value, 3)
+  )
+
+# Only keep the columns we want to show in the table
+inference_results_display <- inference_results %>%
+  dplyr::select(
+    period_a,
+    period_b,
+    obs_diff,
+    ci_lower,
+    ci_upper,
+    p_value
+  )
+
+# cat("Bootstrap confidence intervals and permutation-test p-values\nfor differences in mean nightly trips:\n")
+
+knitr::kable(
+  inference_results_display,
+  format  = "html",
+  caption = "Differences in Mean Nightly Trips Across COVID Periods",
+  col.names = c(
+    "Period A", "Period B", "Diff (A − B)",
+    "CI Lower", "CI Upper", "Permutation p-value"
+  )
+) |>
+  kableExtra::kable_styling(
+    full_width        = FALSE,
+    bootstrap_options = c("striped", "hover")
+  )
+```
+
+
+> The results show large and statistically decisive differences in NYC’s mean nightly trip volumes across COVID periods.
+
+**1) Pre COVID vs During COVID:** Pre COVID nights averaged 146,578 more trips per night than during COVID (95% CI: 133,464 to 159,794; p ≈ 0), providing overwhelming evidence of a massive collapse in night time mobility following COVID restrictions.
+
+**2) Pre COVID vs Post COVID** Post COVID nights averaged 42,574 fewer trips per night than pre-COVID (95% CI: 30,240 to 54,708; p ≈ 0). This indicates that while mobility recovered strongly, it did not fully return to pre-pandemic levels.
+
+**3) During COVID vs Post COVID** Post COVID nights averaged 104,004 more trips per night than during COVID (95% CI: 92,784 to 114,519; p ≈ 0), confirming a large and statistically conclusive rebound after restrictions were lifted.
+
+**Summary:** Across all comparisons, confidence intervals exclude zero and permutation p-values are effectively zero, demonstrating that COVID caused a sharp collapse in night time mobility, followed by a strong but incomplete recovery and a lasting structural shift in NYC’s night-time travel patterns.
+
+---
+
+::: callout-important
+**Statistical confirmation:** Bootstrap confidence intervals exclude zero and permutation p-values are effectively 0 for all period comparisons, providing strong evidence that the COVID shock and recovery differences are not due to normal seasonal variation.
+:::
+
+---
+
+### Summary of Key Visual Findings  
+
+- **Three phase pattern:** NYC’s nighttime mobility shows high pre COVID activity, a sharp collapse in 2020, and a strong but incomplete post COVID recovery.
+
+- **Timing effects:** Early evening travel rebounds faster than very late night trips, as shown by hourly and weekday–weekend trends.
+
+- **Trip characteristics:** Distance and duration compress during COVID and only partially recover afterward.
+
+- **Spatial concentration:** High nightlife Manhattan zones drive most of the recovery, while outer borough areas lag behind.
+
+- **Statistical confirmation:** Bootstrap and permutation tests show these differences are highly significant (p < 0.0005), confirming lasting COVID related shifts in NYC’s night-time mobility.
+
+---
+
+### Has COVID changed the way the city moves at night (8 PM–4 AM)?
+
+![](nightlife.png){width="100%" fig-align="center"}
+*A typical NYC nightlife corridor with dense bars and clubs (Lower East Side / East Village).*
+
+> Yes. COVID caused a clear and lasting shift in the scale and timing of NYC’s night time mobility.
+
+**Before COVID**, night travel showed a strong late night peak across the full 8 PM to 4 AM window. **During COVID**, night time activity collapsed sharply, with inference tests confirming declines far beyond normal variation. **Post COVID**, early evening trips rebound quickly, but late night travel from midnight to four AM remains well below pre COVID levels, indicating a structural rather than temporary change.
+
+Across hourly, weekday weekend, distance, and spatial patterns, the evidence shows that night time mobility recovered earlier in the evening but remains persistently weaker late at night, confirming that COVID permanently reshaped how the city moves after dark.
+
+---
+
+### Policy Implications
+
+The results suggest that post COVID night time recovery is uneven and spatially concentrated. Policies aimed at late night safety, transit availability, and economic revitalization may need to focus specifically on nightlife districts and the post midnight hours, where recovery remains
+incomplete. Ignoring these temporal shifts risks under serving the parts of the city where nightlife driven activity is still fragile.
+
+---
+
+### Bridging to the Overarching Question
+
+This analysis provides irreplaceable evidence on when and where NYC night mobility changed after COVID by linking full TLC trips (8 PM–4 AM) to zone level nightlife intensity. Nightlife dense zones experienced the sharpest late night declines and the strongest rebound, while travel shifted toward earlier evening hours. Together, these patterns directly inform how nightlife activity connects to urban vitality, economic activity, and street presence that shapes perceived safety.
+
+---
+
+### Limitations
+
+**Data scale:** The analysis uses the full 2019–2023 TLC night trip dataset, which requires DuckDB and chunked processing rather than in memory computation.
+
+**Time window:** Trips are restricted to 8 PM–4 AM, excluding earlier evening and late afternoon travel.
+
+**Period definition:** COVID periods are defined at the year level (2019, 2020, 2023), which cannot capture month-by-month policy or behavior changes.
+
+**Rideshare history:** Consistent FHV (Uber/Lyft) data are only available from 2019 onward; January 2019 FHVHV data are missing.
+
+**Nightlife coverage:** Yelp API limits restrict the dataset to ~2,087 nightlife venues, making nightlife intensity an approximation rather than a full census.
+
+**Nightlife zone definition:** Zones are classified as nightlife zones if they contain ≥4 Yelp venues, a threshold choice that affects classification at the margin.
+
+**Airport exclusion:** Airport taxi zones (JFK, LGA, EWR) are excluded to focus on urban nightlife activity, which removes a major source of late-night travel unrelated to nightlife.
+
+**Spatial assignment:** Assigning Yelp venues to taxi zones depends on geocoding accuracy and polygon boundaries, which may introduce minor misclassification.
+
+**Mode coverage:** The analysis includes only TLC reported taxis and FHVs; subways, buses, walking, and informal modes are excluded.
+
+---
+
