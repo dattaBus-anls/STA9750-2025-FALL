@@ -32,6 +32,7 @@ All rendered HTML outputs are stored in the `docs/` directory, which serves as t
 ## 📁 Repository Structure
 
 ```text
+
 STA9750-2025-FALL/
 │
 ├── docs/                     # Rendered HTML outputs (GitHub Pages)
@@ -59,6 +60,7 @@ STA9750-2025-FALL/
 │
 ├── STA9750-2025-FALL.Rproj    # RStudio project file
 └── README.md                 # Repository overview
+```
 
 ## 🧪 Mini-Projects
 
@@ -104,10 +106,11 @@ Output: docs/mp04.html
 
 ### 🌃 Final Project — Nightlife Analytics (NYC)
 
-Research Question:
+**Research Question:**
 How does nightlife activity shape urban mobility and safety, and how did COVID-19 change night-time travel behavior in New York City?
 
-🔑 Key Features
+### 🔑 Key Features
+
 - TLC Yellow Taxi and FHV (Uber/Lyft) trip data (2019–2023)
 - Focus on night-time trips (8 PM–4 AM)
 - Yelp nightlife venue data
@@ -115,9 +118,11 @@ How does nightlife activity shape urban mobility and safety, and how did COVID-1
 - Comparison of pre-COVID (2019), COVID (2020), and post-COVID (2023)
 
 #### ⭐ Key Finding
+
 Night-time travel rebounded after COVID, but late-night travel (12–4 AM) remains persistently weaker, with activity shifting earlier in the evening—especially in nightlife-dense zones.
 
 **📂 Files**
+
 Source: Nightlife_Analytics/quarto/Nightlife_Analytics_covid(2019_2020_2023).qmd
 Output: Published via the site navbar
 
@@ -137,5 +142,6 @@ Output: Published via the site navbar
 - Public data APIs (NYC Open Data, BLS, Census, Yelp)
 
 ### 🌐 Web Links
+
 - **GitHub Repository:** [STA9750-2025-FALL](https://github.com/dattaBus-anls/STA9750-2025-FALL)
 - **Project Website:** [GitHub Pages](https://dattabus-anls.github.io/STA9750-2025-FALL/)
