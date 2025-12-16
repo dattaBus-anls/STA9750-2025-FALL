@@ -25,7 +25,8 @@ website:
       - text: "MP #04"
         href: mp04.qmd
       - text: "Term Project: Nightlife Analytics"
-        href: Nightlife Analytics_covid(2019_2020_2023)
+        href: Nightlife_Analytics/quarto/Nightlife_Analytics_covid.html
+
 
     right:
       - text: Resume
