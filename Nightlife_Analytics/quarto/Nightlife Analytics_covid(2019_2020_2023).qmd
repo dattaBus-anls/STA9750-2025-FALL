@@ -1576,12 +1576,11 @@ nightlife_map_df <- zone_panel %>%
   mutate(
     n_nightlife = ifelse(is.infinite(n_nightlife), 0L, n_nightlife)
   ) %>%
-  # drop Newark Airport – project is NYC only
   filter(borough != "EWR")
 
 # 2) Read TLC taxi zones geometry
-taxi_dir  <- file.path(base_dir, "tlc_zones")
-zones_sf  <- st_read(
+taxi_dir <- file.path(base_dir, "tlc_zones")
+zones_sf <- st_read(
   dsn   = taxi_dir,
   layer = "taxi_zones",
   quiet = TRUE
@@ -1589,19 +1588,20 @@ zones_sf  <- st_read(
   st_transform(4326) %>%
   select(LocationID, geometry)
 
-# 3) Join geometry with nightlife counts
+# 3) Join geometry with nightlife counts (same logic)
 nightlife_map_sf <- zones_sf %>%
   left_join(nightlife_map_df, by = "LocationID") %>%
   mutate(
-    n_nightlife = replace_na(n_nightlife, 0L),
+    n_nightlife = ifelse(is.na(n_nightlife), 0L, n_nightlife),
     avg_rating  = ifelse(is.na(avg_rating), NA_real_, avg_rating)
-  )
+  ) %>%
+  # ✅ Remove unknown zones so they never show up
+  filter(!is.na(zone), !is.na(borough))
 
-# 4) Define color palette and labels for tooltips
-
+# 4) Palette + labels (no "Unknown zone" fallback needed now)
 nightlife_pal <- colorNumeric(
   palette  = viridisLite::magma(256),
-  domain   = nightlife_map_sf$n_nightlife,  # now has 0 instead of NA
+  domain   = nightlife_map_sf$n_nightlife,
   na.color = "#f0f0f0"
 )
 
@@ -1610,17 +1610,47 @@ nightlife_labels <- sprintf(
    Borough: %s<br/>
    Nightlife venues: %s<br/>
    Avg Yelp rating: %s",
-  ifelse(is.na(nightlife_map_sf$zone), "Unknown zone", nightlife_map_sf$zone),
-  ifelse(is.na(nightlife_map_sf$borough), "Unknown", nightlife_map_sf$borough),
+  nightlife_map_sf$zone,
+  nightlife_map_sf$borough,
   comma(nightlife_map_sf$n_nightlife),
-  ifelse(is.na(nightlife_map_sf$avg_rating),
-         "N/A",
-         round(nightlife_map_sf$avg_rating, 1))
+  ifelse(is.na(nightlife_map_sf$avg_rating), "N/A", round(nightlife_map_sf$avg_rating, 1))
 ) |> lapply(htmltools::HTML)
 
-# 5) Interactive leaflet map
+# ---------------------------------------------------------
+# ✅ OPTIONAL: Period overlays (checkboxes) = OUTLINES only
+# Does NOT change Yelp density map logic; just adds overlays.
+# ---------------------------------------------------------
+zones_by_period <- zone_panel %>%
+  filter(borough != "EWR") %>%
+  filter(!is.na(period)) %>%
+  group_by(LocationID, period) %>%
+  summarise(n_trips_period = sum(n_trips, na.rm = TRUE), .groups = "drop") %>%
+  filter(n_trips_period > 0) %>%
+  left_join(zones_sf, by = "LocationID") %>%  # geometry comes from zones_sf
+  st_as_sf()
+
+zones_pre    <- zones_by_period %>% filter(period == "pre_covid")
+zones_during <- zones_by_period %>% filter(period == "during_covid")
+zones_post   <- zones_by_period %>% filter(period == "post_covid")
+
+# 5) Leaflet map
 leaflet(nightlife_map_sf) |>
   addProviderTiles("CartoDB.Positron") |>
+
+  # ✅ Heading INSIDE map
+  addControl(
+    html = HTML("<div style='
+      background: rgba(255,255,255,0.92);
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 700;
+      box-shadow: 0 1px 8px rgba(0,0,0,0.15);
+    '>Nightlife Hotspots (Yelp Venues by Taxi Zone)</div>"),
+    position = "topleft"
+  ) |>
+
+  # Base polygons: Yelp density (your main layer)
   addPolygons(
     fillColor   = ~nightlife_pal(n_nightlife),
     weight      = 0.3,
@@ -1636,14 +1666,50 @@ leaflet(nightlife_map_sf) |>
     labelOptions = labelOptions(
       style     = list("font-size" = "12px"),
       direction = "auto"
-    )
+    ),
+    group = "Nightlife density (Yelp)"
   ) |>
+
+  # ✅ Checkbox overlays (Pre/During/Post) as outlines
+  addPolygons(
+    data = zones_pre,
+    fill = FALSE, weight = 2,
+    color = "#2E86DE",
+    opacity = 0.9,
+    group = "Pre-COVID (2019) zones"
+  ) |>
+  addPolygons(
+    data = zones_during,
+    fill = FALSE, weight = 2,
+    color = "#E67E22",
+    opacity = 0.9,
+    group = "During COVID (2020) zones"
+  ) |>
+  addPolygons(
+    data = zones_post,
+    fill = FALSE, weight = 2,
+    color = "#27AE60",
+    opacity = 0.9,
+    group = "Post-COVID (2023) zones"
+  ) |>
+
   addLegend(
     "bottomright",
     pal    = nightlife_pal,
     values = ~n_nightlife,
     title  = "Nightlife venues<br>(Yelp count)",
     opacity = 0.8
+  ) |>
+
+  # ✅ Layer control = checkboxes
+  addLayersControl(
+    overlayGroups = c(
+      "Nightlife density (Yelp)",
+      "Pre-COVID (2019) zones",
+      "During COVID (2020) zones",
+      "Post-COVID (2023) zones"
+    ),
+    options = layersControlOptions(collapsed = FALSE)
   )
 
 ```
