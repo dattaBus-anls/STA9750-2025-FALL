@@ -1,4 +1,4 @@
-## 🧭 STA 9750 – Basic Software Tools for Data Analysis (Fall 2025)
+### 🧭 STA 9750 – Basic Software Tools for Data Analysis (Fall 2025)
 
 **Instructor:** Prof. Michael Weylandt  
 **Format:** Flipped-classroom + experiential learning using R, Quarto, and GitHub
@@ -22,7 +22,8 @@ Each mini-project includes a GitHub-based peer review cycle focused on code clar
 
 ### 🌃 Final Project — Nightlife Analytics (NYC)
 
-**Research Question:**  
+**Research Question:**
+
 How does nightlife activity shape urban mobility and safety, and how did COVID-19 change night-time travel behavior in New York City?
 
 This final project examines New York City night-time mobility (8 PM–4 AM) by integrating TLC Yellow Taxi and FHV (Uber/Lyft) trip data with Yelp nightlife venue information.  
@@ -30,11 +31,12 @@ The analysis compares **pre-COVID (2019)**, **COVID (2020)**, and **post-COVID (
 
 The project emphasizes reproducible workflows, zone-level aggregation using DuckDB, and data visualization to support clear interpretation of spatial and temporal patterns in urban night-time activity.
 
-**[Open Final Project](docs/Nightlife_Analytics/quarto/Nightlife_Analytics_covid.html)**
+**[Open Final Project](Nightlife_Analytics/quarto/Nightlife_Analytics_covid.html)**
 
 ---
 
 ### 🎯 Learning Objectives
+
 - Develop end-to-end analytical workflows in **R / tidyverse**
 - Produce **reproducible Quarto reports** integrating code, narrative, and visuals
 - Integrate **multi-source public data** (government, APIs, and web data)
@@ -47,6 +49,7 @@ The project emphasizes reproducible workflows, zone-level aggregation using Duck
 ---
 
 ### 📚 Resources & Policies
+
 - *R for Data Science* (Wickham & Grolemund), *Happy Git with R*, *Veridical Data Science*  
 - Software: **R**, **RStudio**, **Quarto** (all free)  
 - AI tools are permitted only for small, targeted coding questions; full assignment generation is prohibited.
