@@ -1,68 +1,92 @@
-## 🧭 STA 9750 – Basic Software Tools for Data Anal.Fall 2025
+## 🧭 STA 9750 – Basic Software Tools for Data Analysis (Fall 2025)
 
 **Instructor:** Prof. Michael Weylandt  
 **Format:** Flipped-classroom + experiential learning using R, Quarto, and GitHub
 
-STA 9750 introduces graduate students to data analytics in R through a project-driven format. Instead of traditional exams, students complete a sequence of GitHub-hosted mini-projects that mirror real-world analytical workflows. Each assignment develops technical fluency, analytical reasoning, and clear data storytelling skills.
+STA 9750 introduces graduate students to data analytics in R through a project-driven format. 
+Instead of traditional exams, students complete a sequence of GitHub-hosted mini-projects and a final capstone project that mirror real-world analytical workflows. Across the semester, assignments emphasize reproducible research, data wrangling, visualization, and clear analytical storytelling using Quarto and GitHub-based collaboration.
 
 ---
 
 ### 📊 Mini-Projects (MP00 – MP04)
 
-
 - **MP00 – Course Setup:** Git/GitHub + Quarto site  
-- **MP01 – Netflix Top 10 Analysis:** wrangling + visuals + press release — [Open MP01](mp01.qmd)  
-- **MP02 – Housing Affordability Index:** ACS + BLS + permits; indices & policy viz — [Open MP02](mp02.qmd)  
-- **MP03 – NYC Tree Canopy:** geospatial joins & maps — [Open MP03](mp03.qmd)
-- **MP04 – Capstone (TBD):** synthesize skills into a self-directed analysis — [Open MP04](mp04.qmd)
+- **MP01 – Netflix Top 10 Analysis:** data wrangling, visualization, and press-style reporting — [Open MP01](mp01.html)  
+- **MP02 – Housing Affordability Index:** ACS + BLS + building permits; index construction and policy visualization — [Open MP02](mp02.html)  
+- **MP03 – NYC Tree Canopy Analysis:** geospatial joins, spatial aggregation, and thematic maps — [Open MP03](mp03.html)  
+- **MP04 – Just the Fact(-Check)s, Ma’am!:** employment revisions and statistical fact-checking — [Open MP04](mp04.html)
 
-Each mini-project includes a GitHub-based peer review cycle focused on code clarity and rubric-based feedback.
+Each mini-project includes a GitHub-based peer review cycle focused on code clarity, reproducibility, and rubric-based feedback.
+
+---
+
+### 🌃 Final Project — Nightlife Analytics (NYC)
+
+**Research Question:**  
+How does nightlife activity shape urban mobility and safety, and how did COVID-19 change night-time travel behavior in New York City?
+
+This final project examines New York City night-time mobility (8 PM–4 AM) by integrating TLC Yellow Taxi and FHV (Uber/Lyft) trip data with Yelp nightlife venue information.  
+The analysis compares **pre-COVID (2019)**, **COVID (2020)**, and **post-COVID (2023)** periods to assess how nightlife-dense and non-nightlife zones experienced uneven collapse and recovery in night-time travel.
+
+The project emphasizes reproducible workflows, zone-level aggregation using DuckDB, and data visualization to support clear interpretation of spatial and temporal patterns in urban night-time activity.
+
+**[Open Final Project](docs/Nightlife_Analytics/quarto/Nightlife_Analytics_covid.html)**
 
 ---
 
 ### 🎯 Learning Objectives
-- End-to-end analytics in R/tidyverse  
-- Reproducible Quarto reports (code + narrative + visuals)  
-- Multi-source data integration (public/government/web)  
-- Geospatial analysis and mapping  
-- Data storytelling for technical & non-technical audiences  
-- GitHub collaboration and professional peer feedback  
-- Responsible AI use and academic integrity
+- Develop end-to-end analytical workflows in **R / tidyverse**
+- Produce **reproducible Quarto reports** integrating code, narrative, and visuals
+- Integrate **multi-source public data** (government, APIs, and web data)
+- Apply **geospatial analysis and mapping** techniques for spatial insights
+- Perform **exploratory and comparative analysis** across time and groups
+- Communicate results through **clear data storytelling** for technical and non-technical audiences
+- Practice **professional GitHub workflows**, including version control and peer review
+- Apply **responsible AI use** and uphold standards of academic integrity
 
 ---
 
 ### 📚 Resources & Policies
 - *R for Data Science* (Wickham & Grolemund), *Happy Git with R*, *Veridical Data Science*  
-- Software: R, RStudio, Quarto (all free)  
-- AI tools allowed only for small coding questions; full assignment generation is prohibited.
+- Software: **R**, **RStudio**, **Quarto** (all free)  
+- AI tools are permitted only for small, targeted coding questions; full assignment generation is prohibited.
 
 ```{r}
 #| echo: false
 #| message: false
 #| warning: false
 #| fig-width: 10
-#| fig-height: 3.8
+#| fig-height: 4.2
 
 if (!require("ggplot2")) { install.packages("ggplot2", quiet=TRUE); library(ggplot2) }
 if (!require("tibble"))  { install.packages("tibble",  quiet=TRUE); library(tibble) }
 
 df <- tibble::tibble(
-mp = factor(c("MP00","MP01","MP02","MP03","MP04"),
-levels = rev(c("MP00","MP01","MP02","MP03","MP04"))),
-progress = c(100, 100, 10, 0, 0)
+  mp = factor(
+    c("MP00","MP01","MP02","MP03","MP04","Final_Project"),
+    levels = rev(c("MP00","MP01","MP02","MP03","MP04","Final_Project"))
+  ),
+  progress = c(100, 100, 100, 100, 100, 100)
 )
 
 ggplot(df, aes(x = progress, y = mp)) +
-geom_segment(aes(x = 0, xend = progress, y = mp, yend = mp), linewidth = 6, alpha = 0.25) +
-geom_point(size = 5) +
-scale_x_continuous(limits = c(0, 100), labels = function(x) paste0(x, "%")) +
-labs(title = "Mini-Projects Progress", x = "Completion", y = NULL) +
-theme_minimal(base_size = 13) +
-theme(panel.grid.major.y = element_blank(),
-panel.grid.minor = element_blank(),
-plot.title = element_text(face="bold"))
-
+  geom_segment(aes(x = 0, xend = progress, y = mp, yend = mp), linewidth = 6, alpha = 0.25) +
+  geom_point(size = 5) +
+  scale_x_continuous(limits = c(0, 100), labels = function(x) paste0(x, "%")) +
+  labs(title = "Project Progress", x = "Completion", y = NULL) +
+  theme_minimal(base_size = 13) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold")
+  )
 ```
+
+
+
+
+
+
 
 
 
