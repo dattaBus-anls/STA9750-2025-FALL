@@ -19,15 +19,15 @@ output-dir: "docs"
 ![](nyc_night_street.jpg){width="900" fig-align="center"}
 *New York City nightlife transportation: Time_Square*
 
-### Introduction
-
-New York City’s nightlife supports jobs, transportation, and the sense of safety created by active late night streets. This project combines TLC night time trips (8 PM–4 AM) with Yelp nightlife venues to examine how COVID-19 reshaped night mobility. The **overarching question** is: **How does nightlife activity - bars, entertainment, and rideshares drive urban economies and affect city safety?** To address this, I focus on the following **specific question**: **Has COVID changed the way the city moves at night (8 PM – 4 AM)?** Using 2019–2023 Yellow Taxi and FHV (Uber/Lyft) trips linked to nightlife zones, the analysis tracks spatial and temporal shifts across pre-COVID, during-COVID, and post-COVID periods. Through cleaning, visualization, and statistical inference, the project reveals structural changes in NYC’s nightlife and night-time movement ecosystem.
-
----
-
 ### Executive Summary
 
 COVID reshaped NYC night time mobility. Before COVID, night travel peaked around midnight but collapsed in 2020. Post COVID activity shifted earlier in the evening while late night travel remained weaker. Nightlife intensive zones saw the largest declines and recoveries, and rideshare services strengthened their dominance as Yellow Taxi activity lagged. Statistical evidence shows these changes are large, significant, and persistent, indicating a lasting shift in the timing and geography of night time travel in New York City.
+
+---
+
+### Introduction
+
+New York City’s nightlife supports jobs, transportation, and the sense of safety created by active late night streets. This project combines TLC night time trips (8 PM–4 AM) with Yelp nightlife venues to examine how COVID-19 reshaped night mobility. The **overarching question** is: **How does nightlife activity - bars, entertainment, and rideshares drive urban economies and affect city safety?** To address this, I focus on the following **specific question**: **Has COVID changed the way the city moves at night (8 PM – 4 AM)?** Using 2019–2023 Yellow Taxi and FHV (Uber/Lyft) trips linked to nightlife zones, the analysis tracks spatial and temporal shifts across pre-COVID, during-COVID, and post-COVID periods. Through cleaning, visualization, and statistical inference, the project reveals structural changes in NYC’s nightlife and night-time movement ecosystem.
 
 ---
 
