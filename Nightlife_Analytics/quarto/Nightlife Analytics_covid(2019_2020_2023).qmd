@@ -1,6 +1,7 @@
 ---
-title: "Nightlife_Analytics"
-author: "Apu Datta" 
+title: "Nightlife Analytics: Has COVID changed the way the city moves at night"
+author: "Apu Datta"
+date: "December 18, 2025"
 format:
   html: 
     toc: true            
@@ -2616,8 +2617,7 @@ Across hourly, weekday weekend, distance, and spatial patterns, the evidence sho
 
 ### Policy Implications
 
-The results suggest that post COVID night time recovery is uneven and spatially concentrated. Policies aimed at late night safety, transit availability, and economic revitalization may need to focus specifically on nightlife districts and the post midnight hours, where recovery remains
-incomplete. Ignoring these temporal shifts risks under serving the parts of the city where nightlife driven activity is still fragile.
+The results suggest that post COVID night time recovery is uneven and spatially concentrated. Policies aimed at late night safety, transit availability, and economic revitalization may need to focus specifically on nightlife districts and the post midnight hours, where recovery remains incomplete. Ignoring these temporal shifts risks under serving the parts of the city where nightlife driven activity is still fragile.
 
 ---
 
@@ -2648,4 +2648,3 @@ This analysis provides irreplaceable evidence on when and where NYC night mobili
 **Mode coverage:** The analysis includes only TLC reported taxis and FHVs; subways, buses, walking, and informal modes are excluded.
 
 ---
-
